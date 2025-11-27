@@ -21,8 +21,9 @@ export function FlourTypesManager() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    measurementType: "weight" as "quantity" | "weight",
   })
-  const { t } = useLang()
+  const { t, lang } = useLang()
 
   const filteredFlourTypes = flourTypes.filter((type) => type.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
@@ -33,7 +34,14 @@ export function FlourTypesManager() {
     if (editingId) {
       setFlourTypes((prev) =>
         prev.map((type) =>
-          type.id === editingId ? { ...type, name: formData.name, description: formData.description } : type,
+          type.id === editingId
+            ? {
+              ...type,
+              name: formData.name,
+              description: formData.description,
+              measurementType: formData.measurementType,
+            }
+            : type,
         ),
       )
       setEditingId(null)
@@ -42,17 +50,22 @@ export function FlourTypesManager() {
         id: Date.now().toString(),
         name: formData.name,
         description: formData.description,
+        measurementType: formData.measurementType,
         createdAt: new Date().toISOString(),
       }
       setFlourTypes((prev) => [...prev, newFlourType])
     }
 
-    setFormData({ name: "", description: "" })
+    setFormData({ name: "", description: "", measurementType: "weight" })
     setIsAdding(false)
   }
 
   const handleEdit = (type: FlourType) => {
-    setFormData({ name: type.name, description: type.description || "" })
+    setFormData({
+      name: type.name,
+      description: type.description || "",
+      measurementType: type.measurementType || "weight",
+    })
     setEditingId(type.id)
     setIsAdding(true)
   }
@@ -66,7 +79,7 @@ export function FlourTypesManager() {
   const handleCancel = () => {
     setIsAdding(false)
     setEditingId(null)
-    setFormData({ name: "", description: "" })
+    setFormData({ name: "", description: "", measurementType: "weight" })
   }
 
   return (
@@ -97,6 +110,35 @@ export function FlourTypesManager() {
                   placeholder={t("productNamePlaceholder")}
                   required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {t("productMeasurementType")}
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="measurementType"
+                      value="weight"
+                      checked={formData.measurementType === "weight"}
+                      onChange={() => setFormData((prev) => ({ ...prev, measurementType: "weight" }))}
+                      className="accent-primary"
+                    />
+                    <span>{t("measurementWeight")}</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="measurementType"
+                      value="quantity"
+                      checked={formData.measurementType === "quantity"}
+                      onChange={() => setFormData((prev) => ({ ...prev, measurementType: "quantity" }))}
+                      className="accent-primary"
+                    />
+                    <span>{t("measurementQuantity")}</span>
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">
@@ -156,7 +198,12 @@ export function FlourTypesManager() {
               </div>
               {type.description && <p className="text-sm text-gray-600 mb-3">{type.description}</p>}
               <Badge variant="secondary" className="text-xs">
-                {new Date(type.createdAt).toLocaleDateString("fa-IR")}
+                {lang === "fa"
+                  ? new Date(type.createdAt).toLocaleDateString("fa-IR")
+                  : new Date(type.createdAt).toLocaleDateString("en-GB")}
+              </Badge>
+              <Badge variant="outline" className="text-xs mr-2">
+                {type.measurementType === "quantity" ? t("measurementQuantity") : t("measurementWeight")}
               </Badge>
             </CardContent>
           </Card>

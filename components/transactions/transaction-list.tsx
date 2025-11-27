@@ -47,7 +47,7 @@ type SortDirection = "asc" | "desc"
 
 export function TransactionList({ data, onDataChange, onEdit }: TransactionListProps) {
   const [flourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
-  const { t } = useLang()
+  const { t, lang } = useLang()
 
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<TransactionType | "all">("all")
@@ -85,6 +85,8 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         return { label: t("cashOut"), icon: DollarSign, color: "bg-red-100 text-red-800", arrow: ArrowUp }
       case "expense":
         return { label: t("expense"), icon: DollarSign, color: "bg-orange-100 text-orange-800", arrow: ArrowUp }
+      case "income":
+        return { label: t("income"), icon: DollarSign, color: "bg-emerald-100 text-emerald-800", arrow: ArrowDown }
       default:
         return { label: t("unknown"), icon: DollarSign, color: "bg-gray-100 text-gray-800", arrow: ArrowUp }
     }
@@ -176,16 +178,16 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           bValue = b.amount
           break
         case "date":
-          aValue = new Date(a.createdAt || a.date).getTime()
-          bValue = new Date(b.createdAt || b.date).getTime()
+          aValue = new Date(a.date || a.createdAt).getTime()
+          bValue = new Date(b.date || b.createdAt).getTime()
           break
         case "description":
           aValue = a.description
           bValue = b.description
           break
         default:
-          aValue = new Date(a.createdAt || b.date).getTime()
-          bValue = new Date(b.createdAt || b.date).getTime()
+          aValue = new Date(a.date || a.createdAt).getTime()
+          bValue = new Date(b.date || b.createdAt).getTime()
       }
 
       if (typeof aValue === "string" && typeof bValue === "string") {
@@ -238,7 +240,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         unitPrice: unitPrice ? `${unitPrice} ${data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}/${t.weightUnit || "ton"}` : "-",
         amount: `${t.amount} ${data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}`,
         toman: undefined,
-        datePersian: formatDate(t.createdAt || t.date || "").persian,
+        datePersian: formatDate(t.date || t.createdAt || "").persian,
         description: t.description ?? "-",
       }
     })
@@ -289,7 +291,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         <td>${t.weight ? `${formatNumber(t.weight)} ${weightUnitLabel}` : "-"}</td>
         <td>${(t.unitPrice != null) ? `${formatNumber(t.unitPrice)} ${currencySymbol}/${weightUnitLabel}` : ((t.weight && t.amount) ? `${formatNumber((t.amount) / (t.weight))} ${currencySymbol}/${weightUnitLabel}` : "-")}</td>
         <td class="${usdCls}">${usd}</td>
-        <td>${formatDate(t.createdAt || t.date || "").persian}</td>
+        <td>${formatDate(t.date || t.createdAt || "").persian}</td>
         <td class="desc">${t.description || "-"}</td>
       </tr>`
     }).join("")
@@ -523,16 +525,24 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       : "-"}
                   </TableCell>
                   <TableCell className="text-center text-[10px] p-2">
-                    <div>
+                    {lang === "fa" ? (
+                      <div>
+                        <div className="font-medium">
+                          {formatDate(transaction.date || transaction.createdAt || "").persian}
+                        </div>
+                        <div className="text-muted-foreground text-[9px]">
+                          {formatDate(transaction.date || transaction.createdAt || "").gregorian}
+                        </div>
+                      </div>
+                    ) : (
                       <div className="font-medium">
-                        {formatDate(transaction.createdAt || transaction.date || "").persian}
+                        {formatDate(transaction.date || transaction.createdAt || "").gregorian}
                       </div>
-                      <div className="text-muted-foreground text-[9px]">
-                        {formatDate(transaction.createdAt || transaction.date || "").gregorian}
-                      </div>
-                    </div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[120px] truncate">{transaction.description}</TableCell>
+                  <TableCell className="text-center text-xs p-2 max-w-[120px] truncate" title={transaction.description}>
+                    {transaction.description}
+                  </TableCell>
                   <TableCell className="text-center p-2">
                     <div className="flex gap-0.5 justify-center">
                       {onEdit && (

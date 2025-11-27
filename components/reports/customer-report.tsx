@@ -104,7 +104,7 @@ export function CustomerReport({ data }: CustomerReportProps) {
 
   const summary = calculateCustomerSummary(selectedCustomer)
   const transactions = getCustomerTransactions(selectedCustomer).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime(),
   )
 
   return (

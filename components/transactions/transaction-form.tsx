@@ -32,7 +32,8 @@ const generateDocumentNumber = (transactions: Transaction[]): string => {
 export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
   const [flourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
-  const { t } = useLang()
+  const [validationError, setValidationError] = useState<string>("")
+  const { t, lang } = useLang()
 
   const getLocalDateTime = () => {
     const now = new Date()
@@ -103,6 +104,29 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationError("")
+
+    // Validation: Customer must be selected
+    if (!formData.customerId) {
+      setValidationError(t("selectCustomerRequired"))
+      return
+    }
+
+    // Validation for flour_in and flour_out: only one of quantity or weight should be filled
+    if (formData.type === "flour_in" || formData.type === "flour_out") {
+      const hasQuantity = formData.quantity && formData.quantity.trim() !== ""
+      const hasWeight = formData.weight && formData.weight.trim() !== ""
+
+      if (!hasQuantity && !hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+
+      if (hasQuantity && hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+    }
 
     let totalAmount = 0
     if (formData.type === "flour_purchase" || formData.type === "flour_sale") {
@@ -110,7 +134,8 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
     } else if (
       formData.type === "cash_in" ||
       formData.type === "cash_out" ||
-      formData.type === "expense"
+      formData.type === "expense" ||
+      formData.type === "income"
     ) {
       totalAmount = Number.parseFloat(formData.amount)
     }
@@ -131,6 +156,8 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
             date: formData.date,
             currencyId: formData.currencyId,
             weightUnit: formData.weightUnit,
+            // Preserve original createdAt
+            createdAt: transaction.createdAt || transaction.date,
           }
           : transaction,
       )
@@ -164,7 +191,7 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
     }
 
     setFormData({
-      type: "flour_in",
+      type: formData.type,
       customerId: "",
       amount: "",
       weight: "",
@@ -176,6 +203,7 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
       currencyId: formData.currencyId, // Keep current selection
       weightUnit: formData.weightUnit, // Keep current selection
     })
+    setValidationError("")
   }
 
   const handleCancelEdit = () => {
@@ -193,6 +221,7 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
       currencyId: data.settings?.baseCurrencyId || "",
       weightUnit: data.settings?.baseWeightUnit || "ton",
     })
+    setValidationError("")
   }
 
   const getCustomerName = (customerId: string) => {
@@ -207,6 +236,7 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
     { value: "cash_in", label: t("cashIn"), icon: DollarSign, color: "text-green-600" },
     { value: "cash_out", label: t("cashOut"), icon: DollarSign, color: "text-red-600" },
     { value: "expense", label: t("expense"), icon: DollarSign, color: "text-orange-600" },
+    { value: "income", label: t("income"), icon: DollarSign, color: "text-emerald-600" },
   ]
 
   const currentType = transactionTypes.find((t) => t.value === formData.type)
@@ -301,13 +331,13 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
           value={formData.type}
           onValueChange={(value) => setFormData({ ...formData, type: value as TransactionType, customerId: "" })}
         >
-          <TabsList className="grid w-full grid-cols-9">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-8 gap-1">
             {transactionTypes.map((type) => {
               const Icon = type.icon
               return (
-                <TabsTrigger key={type.value} value={type.value} className="flex items-center gap-1">
-                  <Icon className="h-3 w-3" />
-                  <span className="hidden sm:inline">{type.label}</span>
+                <TabsTrigger key={type.value} value={type.value} className="flex items-center gap-1 px-2 py-1">
+                  <Icon className="h-3 w-3 shrink-0" />
+                  <span className="hidden md:inline text-xs truncate">{type.label}</span>
                 </TabsTrigger>
               )
             })}
@@ -323,7 +353,7 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                       value={formData.customerId}
                       onValueChange={(value) => setFormData({ ...formData, customerId: value })}
                     >
-                      <SelectTrigger className="text-right">
+                      <SelectTrigger className={lang === "fa" ? "text-right" : "text-left"} dir={lang === "fa" ? "rtl" : "ltr"}>
                         <SelectValue placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -357,9 +387,20 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                         <Label htmlFor="flourType">{t("flourType")}</Label>
                         <Select
                           value={formData.flourTypeId}
-                          onValueChange={(value) => setFormData({ ...formData, flourTypeId: value })}
+                          onValueChange={(value) => {
+                            const selectedFlour = flourTypes.find(f => f.id === value)
+                            const updates: any = { flourTypeId: value }
+
+                            if (selectedFlour?.measurementType === "quantity") {
+                              updates.weight = ""
+                            } else if (selectedFlour?.measurementType === "weight") {
+                              updates.quantity = ""
+                            }
+
+                            setFormData({ ...formData, ...updates })
+                          }}
                         >
-                          <SelectTrigger className="text-right">
+                          <SelectTrigger className={lang === "fa" ? "text-right" : "text-left"} dir={lang === "fa" ? "rtl" : "ltr"}>
                             <SelectValue placeholder={t("selectFlourType")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -379,8 +420,11 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                           type="number"
                           value={formData.quantity}
                           onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                          className="text-right"
-                          placeholder={t("quantity")}
+                          className={lang === "fa" ? "text-right" : "text-left"}
+                          dir={lang === "fa" ? "rtl" : "ltr"}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          required={formData.type === "flour_purchase" || formData.type === "flour_sale"}
+                          disabled={flourTypes.find(f => f.id === formData.flourTypeId)?.measurementType === "weight"}
                         />
                       </div>
 
@@ -403,9 +447,11 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                               setFormData((prev) => ({ ...prev, weight, amount: total.toString() }))
                             }
                           }}
-                          className="text-right"
-                          placeholder={t("flourWeight")}
-                          required
+                          className={lang === "fa" ? "text-right" : "text-left"}
+                          dir={lang === "fa" ? "rtl" : "ltr"}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          required={formData.type === "flour_purchase" || formData.type === "flour_sale"}
+                          disabled={flourTypes.find(f => f.id === formData.flourTypeId)?.measurementType === "quantity"}
                         />
                       </div>
 
@@ -425,8 +471,9 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                                 setFormData((prev) => ({ ...prev, unitPrice, amount: total.toString() }))
                               }
                             }}
-                            className="text-right"
-                            placeholder={t("pricePerTon")}
+                            className={lang === "fa" ? "text-right" : "text-left"}
+                            dir={lang === "fa" ? "rtl" : "ltr"}
+                            onWheel={(e) => e.currentTarget.blur()}
                             required
                           />
                         </div>
@@ -438,7 +485,8 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                     formData.type === "cash_out" ||
                     formData.type === "flour_purchase" ||
                     formData.type === "flour_sale" ||
-                    formData.type === "expense") && (
+                    formData.type === "expense" ||
+                    formData.type === "income") && (
                       <div className={isFlourTransaction ? "md:col-span-1" : ""}>
                         <Label htmlFor="amount">
                           {formData.type === "flour_purchase" || formData.type === "flour_sale"
@@ -451,8 +499,9 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                           step="0.01"
                           value={formData.amount}
                           onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                          className="text-right"
-                          placeholder={t("amount")}
+                          className={lang === "fa" ? "text-right" : "text-left"}
+                          dir={lang === "fa" ? "rtl" : "ltr"}
+                          onWheel={(e) => e.currentTarget.blur()}
                           required
                           readOnly={
                             (formData.type === "flour_purchase" || formData.type === "flour_sale") &&
@@ -470,10 +519,17 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
                     id="description"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="text-right"
-                    placeholder={t("documentDescription")}
+                    className={lang === "fa" ? "text-right" : "text-left"}
+                    dir={lang === "fa" ? "rtl" : "ltr"}
+                    rows={3}
                   />
                 </div>
+
+                {validationError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <span className="block sm:inline">{validationError}</span>
+                  </div>
+                )}
 
                 <Button
                   type="submit"
@@ -498,6 +554,6 @@ export function TransactionForm({ data, onDataChange }: TransactionFormProps) {
         <h3 className="text-lg font-semibold mb-4">{t("lastRegisteredDocuments")}</h3>
         <TransactionList data={data} onDataChange={onDataChange} onEdit={handleEdit} />
       </div>
-    </div>
+    </div >
   )
 }

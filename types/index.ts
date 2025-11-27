@@ -23,6 +23,7 @@ export interface FlourType {
   id: string
   name: string
   description?: string
+  measurementType?: "quantity" | "weight"
   createdAt: string
 }
 
@@ -36,6 +37,7 @@ export type TransactionType =
   | "toman_in"
   | "toman_out"
   | "expense"
+  | "income"
 
 export interface Transaction {
   id: string

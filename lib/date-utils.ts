@@ -33,7 +33,7 @@ export const formatPersianDate = gregorianToPersian
 export function formatGregorianDate(gregorianDate: string): string {
   const date = new Date(gregorianDate)
 
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString("en-GB", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -44,7 +44,7 @@ export function formatGregorianDate(gregorianDate: string): string {
 export function formatGregorianDateWithTime(gregorianDate: string): string {
   const date = new Date(gregorianDate)
 
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString("en-GB", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
