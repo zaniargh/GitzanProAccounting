@@ -32,8 +32,9 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
     const menuItems = [
         { id: "dashboard", labelKey: "dashboard", icon: Home },
         { id: "customers", labelKey: "customers", icon: Users },
+        { id: "bank-accounts", labelKey: "bankAccounts", icon: Wallet },
         { id: "currencies", labelKey: "currencies", icon: Coins },
-        { id: "flour-types", labelKey: "flourTypes", icon: Package },
+        { id: "product-types", labelKey: "productTypes", icon: Package },
         { id: "transactions", labelKey: "documents", icon: FileText },
         { id: "documents-list", labelKey: "documentsList", icon: FileText },
         { id: "cash-inventory", labelKey: "cashInventory", icon: Wallet },

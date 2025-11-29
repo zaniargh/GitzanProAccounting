@@ -1,3 +1,24 @@
+export interface CompanyInfo {
+  nameFa: string
+  addressFa: string
+  phones: string[]
+  website: string
+  email: string
+}
+
+export interface LetterheadRow {
+  documentNumber?: string
+  type: string
+  customerName: string
+  flourTypeName?: string
+  weight?: string
+  quantity?: number
+  unitPrice?: string
+  amount?: string
+  datePersian: string
+  description?: string
+}
+
 export function buildLetterheadHTML(rows: LetterheadRow[], company?: CompanyInfo) {
   const c = {
     nameFa: company?.nameFa ?? "Adrom Company",
@@ -13,10 +34,9 @@ export function buildLetterheadHTML(rows: LetterheadRow[], company?: CompanyInfo
       <td>${r.type}</td>
       <td>${r.customerName}</td>
       <td>${r.flourTypeName ?? "-"}</td>
-      <td>${r.weight != null ? r.weight.toLocaleString("en-US")+" تن" : "-"}</td>
-      <td>${r.unitPrice != null ? r.unitPrice.toLocaleString("en-US") : "-"}</td>
-      <td class="green">${r.amount != null ? r.amount.toLocaleString("en-US") : "-"}</td>
-      <td class="red">${r.toman  != null ? r.toman.toLocaleString("en-US")  : "-"}</td>
+      <td>${r.weight != null ? r.weight : "-"}</td>
+      <td>${r.unitPrice != null ? r.unitPrice : "-"}</td>
+      <td class="green">${r.amount != null ? r.amount : "-"}</td>
       <td>${r.datePersian}</td>
       <td class="desc">${r.description ?? "-"}</td>
     </tr>
@@ -88,7 +108,7 @@ export function buildLetterheadHTML(rows: LetterheadRow[], company?: CompanyInfo
       <!-- ردیف تیتر جدول -->
       <tr>
         <th>شماره سند</th><th>نوع</th><th>مشتری</th><th>نوع آرد</th>
-        <th>مقدار</th><th>قیمت واحد</th><th>مبلغ (دلار)</th><th>تومن</th><th>تاریخ</th><th>توضیحات</th>
+        <th>مقدار</th><th>قیمت واحد</th><th>مبلغ (دلار)</th><th>تاریخ</th><th>توضیحات</th>
       </tr>
     </thead>
 

@@ -10,8 +10,9 @@ export const defaultData: AppData = {
   customers: [],
   customerGroups: [],
   transactions: [],
-  flourTypes: [],
+  productTypes: [],
   currencies: [],
+  bankAccounts: [],
   bulkTransactions: [],
   documents: [],
   settings: {},
@@ -46,7 +47,9 @@ export function useLocalStorage() {
           if (raw) setData(JSON.parse(raw))
         }
       } catch (e) {
-        console.error("useLocalStorage fallback error:", e)
+        if (process.env.NODE_ENV === 'development') {
+          console.error("useLocalStorage fallback error:", e)
+        }
       } finally {
         if (!cancelled) setIsLoading(false)
       }
@@ -64,7 +67,9 @@ export function useLocalStorage() {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
       }
     } catch (e) {
-      console.warn("localStorage save error:", e)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn("localStorage save error:", e)
+      }
     }
     // Save to file on disk through API
     try {
@@ -74,7 +79,9 @@ export function useLocalStorage() {
         body: JSON.stringify({ app: next }),
       })
     } catch (e) {
-      console.error("file DB save error:", e)
+      if (process.env.NODE_ENV === 'development') {
+        console.error("file DB save error:", e)
+      }
     }
   }
 

@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
-import type { AppData, FlourType, BulkTransaction } from "@/types"
+import type { AppData, ProductType, BulkTransaction } from "@/types"
 
 // -------------------- Types & Props --------------------
 type SettingsProps = { data: AppData; onDataChange: (d: AppData) => void }
@@ -25,7 +25,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
     const [isBackingUp, setIsBackingUp] = useState(false)
 
     // LocalStorage mirrors (used for stats/fallbacks)
-    const [lsFlourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
+    const [lsProductTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
     const [lsBulk] = useLocalStorageGeneric<BulkTransaction[]>("bulkTransactions", [])
     const [lsBulkTehran] = useLocalStorageGeneric<any[]>("bulkTransactionsTehran", [])
 
@@ -36,15 +36,12 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
 
         let dollarReceivable = 0 // طلب نقدی دلاری (اعداد مثبت)
         let dollarPayable = 0 // بدهی نقدی دلاری (اعداد منفی)
-        let tomanReceivable = 0 // طلب تومنی (اعداد مثبت)
-        let tomanPayable = 0 // بدهی تومنی (اعداد منفی)
 
         const allCustomers = [...customers]
 
         // محاسبه بدهی هر مشتری (شامل حساب‌های هزینه)
         allCustomers.forEach((customer) => {
             let cashDebt = 0
-            let tomanDebt = 0
 
             transactions.forEach((transaction) => {
                 if (transaction.customerId === customer.id) {
@@ -52,43 +49,33 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
 
                     // محاسبه بدهی دلاری
                     if (
-                        transaction.type === "flour_purchase" ||
+                        transaction.type === "product_purchase" ||
                         transaction.type === "cash_out" ||
                         transaction.type === "expense"
                     ) {
                         cashDebt += amount
-                    } else if (transaction.type === "flour_sale" || transaction.type === "cash_in") {
+                    } else if (transaction.type === "product_sale" || transaction.type === "cash_in") {
                         cashDebt -= amount
                     }
 
-                    // محاسبه بدهی تومنی
-                    if (transaction.type === "toman_out") {
-                        tomanDebt += amount
-                    } else if (transaction.type === "toman_in") {
-                        tomanDebt -= amount
-                    }
+
                 }
             })
 
             if (cashDebt > 0) dollarReceivable += cashDebt
             else if (cashDebt < 0) dollarPayable += Math.abs(cashDebt)
-
-            if (tomanDebt > 0) tomanReceivable += tomanDebt
-            else if (tomanDebt < 0) tomanPayable += Math.abs(tomanDebt)
         })
 
         return {
             customers: customers.length,
             customerGroups: data.customerGroups?.length || 0,
             transactions: transactions.length,
-            flourTypes: (lsFlourTypes?.length ?? 0) || data.flourTypes?.length || 0,
+            productTypes: (lsProductTypes?.length ?? 0) || data.productTypes?.length || 0,
             bulkTransactions: (lsBulk?.length ?? 0) || data.bulkTransactions?.length || 0,
             dollarReceivable,
             dollarPayable,
-            tomanReceivable,
-            tomanPayable,
         }
-    }, [data, lsFlourTypes, lsBulk])
+    }, [data, lsProductTypes, lsBulk])
 
     // -------------------- Backup --------------------
     const handleBackup = () => {
@@ -97,7 +84,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
             const app = (safeParse<AppData>("flour-accounting-data") as Partial<AppData>) || {}
 
             // همیشه اولویت با localStorage جاری است؛ اگر نبود از app استفاده می‌کنیم
-            const lsFT = safeParse<FlourType[]>("flourTypes") || []
+            const lsPT = safeParse<ProductType[]>("productTypes") || []
             const lsBulkLocal = safeParse<BulkTransaction[]>("bulkTransactions") || []
             const lsBulkTehranLocal = safeParse<any[]>("bulkTransactionsTehran") || []
             const lsDocs = safeParse<any[]>("documents") || []
@@ -108,31 +95,27 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
             // --- بدهی مشتریان بر اساس تراکنش‌ها ---
             const customersWithDebts = customers.map((customer) => {
                 let cashDebt = 0
-                let flourDebt = 0
-                let tomanDebt = 0
+                let productDebt = 0
 
                 transactions.forEach((t) => {
                     if (t.customerId !== customer.id) return
                     const amount = t.amount || 0
                     const w = t.weight || 0
 
-                    if (t.type === "flour_purchase" || t.type === "cash_out" || t.type === "expense") cashDebt += amount
-                    else if (t.type === "flour_sale" || t.type === "cash_in") cashDebt -= amount
+                    if (t.type === "product_purchase" || t.type === "cash_out" || t.type === "expense") cashDebt += amount
+                    else if (t.type === "product_sale" || t.type === "cash_in") cashDebt -= amount
 
-                    if (t.type === "flour_in") flourDebt += w
-                    else if (t.type === "flour_out") flourDebt -= w
-
-                    if (t.type === "toman_out") tomanDebt += amount
-                    else if (t.type === "toman_in") tomanDebt -= amount
+                    if (t.type === "product_in") productDebt += w
+                    else if (t.type === "product_out") productDebt -= w
                 })
 
-                return { ...customer, cashDebt, flourDebt, tomanDebt }
+                return { ...customer, cashDebt, productDebt }
             })
 
             // --- Snapshots for full-fidelity backups ---
             function computeSnapshots(appData: AppData) {
                 const tx = appData.transactions || []
-                const flourTypes = appData.flourTypes || []
+                const productTypes = appData.productTypes || []
 
                 // Cash Inventory Snapshot (دلار)
                 let totalCashCredit = 0
@@ -142,10 +125,10 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                         let cashBalance = 0
                         cTx.forEach((t) => {
                             switch (t.type) {
-                                case "flour_purchase":
+                                case "product_purchase":
                                     cashBalance -= t.amount || 0
                                     break
-                                case "flour_sale":
+                                case "product_sale":
                                     cashBalance += t.amount || 0
                                     break
                                 case "cash_in":
@@ -158,7 +141,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                                     cashBalance -= t.amount || 0
                                     break
                                 default:
-                                    break // toman_* در کارت‌های دلاری لحاظ نمی‌شوند
+                                    break
                             }
                         })
                         if (cashBalance > 0) totalCashCredit += cashBalance
@@ -166,51 +149,51 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                     })
                 const cashInventory = { totalCashCredit, totalCashDebt }
 
-                // Flour Inventory Snapshot (طلب/بدهی آردی)
-                const flourInventory: Record<string, { credit: number; debt: number }> = {}
-                flourTypes.forEach((ft) => {
-                    flourInventory[ft.id] = { credit: 0, debt: 0 }
+                // Product Inventory Snapshot (طلب/بدهی محصول)
+                const productInventory: Record<string, { credit: number; debt: number }> = {}
+                productTypes.forEach((pt) => {
+                    productInventory[pt.id] = { credit: 0, debt: 0 }
                 })
                 tx.forEach((t) => {
-                    if (!t.flourTypeId || !flourInventory[t.flourTypeId]) return
+                    if (!t.productTypeId || !productInventory[t.productTypeId]) return
                     const w = t.weight || 0
                     switch (t.type) {
-                        case "flour_purchase":
-                            flourInventory[t.flourTypeId].credit += w
+                        case "product_purchase":
+                            productInventory[t.productTypeId].credit += w
                             break
-                        case "flour_in":
-                            flourInventory[t.flourTypeId].credit -= w
+                        case "product_in":
+                            productInventory[t.productTypeId].credit -= w
                             break
-                        case "flour_sale":
-                            flourInventory[t.flourTypeId].debt += w
+                        case "product_sale":
+                            productInventory[t.productTypeId].debt += w
                             break
-                        case "flour_out":
-                            flourInventory[t.flourTypeId].debt -= w
+                        case "product_out":
+                            productInventory[t.productTypeId].debt -= w
                             break
                     }
                 })
 
                 // Warehouse Snapshot (موجودی مخزن)
                 const warehouseInventory: Record<string, number> = {}
-                flourTypes.forEach((ft) => {
-                    warehouseInventory[ft.id] = 0
+                productTypes.forEach((pt) => {
+                    warehouseInventory[pt.id] = 0
                 })
                 tx.forEach((t) => {
-                    if (!t.flourTypeId || warehouseInventory[t.flourTypeId] === undefined) return
+                    if (!t.productTypeId || warehouseInventory[t.productTypeId] === undefined) return
                     const w = t.weight || 0
                     switch (t.type) {
-                        case "flour_purchase":
-                        case "flour_in":
-                            warehouseInventory[t.flourTypeId] += w
+                        case "product_purchase":
+                        case "product_in":
+                            warehouseInventory[t.productTypeId] += w
                             break
-                        case "flour_sale":
-                        case "flour_out":
-                            warehouseInventory[t.flourTypeId] -= w
+                        case "product_sale":
+                        case "product_out":
+                            warehouseInventory[t.productTypeId] -= w
                             break
                     }
                 })
 
-                return { cashInventory, flourInventory, warehouseInventory }
+                return { cashInventory, productInventory, warehouseInventory }
             }
 
             // --- Build backupData with LS-first policy ---
@@ -219,7 +202,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                 customerGroups: Array.isArray(app.customerGroups) ? app.customerGroups : data.customerGroups || [],
                 transactions: transactions,
                 documents: Array.isArray(app.documents) ? app.documents : lsDocs,
-                flourTypes: Array.isArray(lsFT) && lsFT.length ? lsFT : Array.isArray(app.flourTypes) ? app.flourTypes : [],
+                productTypes: Array.isArray(lsPT) && lsPT.length ? lsPT : Array.isArray(app.productTypes) ? app.productTypes : [],
                 bulkTransactions:
                     Array.isArray(lsBulkLocal) && lsBulkLocal.length
                         ? lsBulkLocal
@@ -232,6 +215,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                         : Array.isArray(app.bulkTransactionsTehran)
                             ? app.bulkTransactionsTehran
                             : [],
+                currencies: Array.isArray(app.currencies) ? app.currencies : data.currencies || [],
             } as AppData & { backupInfo?: any; snapshots?: any }
 
             backupData.snapshots = computeSnapshots(backupData)
@@ -244,7 +228,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                     transactions: backupData.transactions?.length || 0,
                     bulkTransactions: (backupData as any).bulkTransactions?.length || 0,
                     bulkTransactionsTehran: (backupData as any).bulkTransactionsTehran?.length || 0,
-                    flourTypes: backupData.flourTypes?.length || 0,
+                    productTypes: backupData.productTypes?.length || 0,
                 },
             }
 
@@ -265,10 +249,12 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
 ${backupData.backupInfo.totalRecords.customers} مشتری
 ${backupData.backupInfo.totalRecords.transactions} سند
 ${backupData.backupInfo.totalRecords.bulkTransactions} معامله 100 تنی
-${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
+${backupData.backupInfo.totalRecords.productTypes} نوع آرد`,
             )
         } catch (e) {
-            console.error("خطا در ایجاد بک‌آپ:", e)
+            if (process.env.NODE_ENV === 'development') {
+                console.error("خطا در ایجاد بک‌آپ:", e)
+            }
             alert("خطا در ایجاد بک‌آپ")
         } finally {
             setIsBackingUp(false)
@@ -279,7 +265,7 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
     const handleSyncNow = async () => {
         try {
             const app = (safeParse<AppData>("flour-accounting-data") as Partial<AppData>) || {}
-            const lsFT = safeParse<FlourType[]>("flourTypes") || []
+            const lsPT = safeParse<ProductType[]>("productTypes") || []
             const lsBulkLocal = safeParse<BulkTransaction[]>("bulkTransactions") || []
             const lsBulkTehranLocal = safeParse<any[]>("bulkTransactionsTehran") || []
             const lsDocs = safeParse<any[]>("documents") || []
@@ -289,7 +275,7 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
                 customerGroups: Array.isArray(app.customerGroups) ? app.customerGroups : data.customerGroups || [],
                 transactions: Array.isArray(app.transactions) ? app.transactions : data.transactions || [],
                 documents: Array.isArray(app.documents) ? app.documents : lsDocs,
-                flourTypes: Array.isArray(lsFT) && lsFT.length ? lsFT : Array.isArray(app.flourTypes) ? app.flourTypes : [],
+                productTypes: Array.isArray(lsPT) && lsPT.length ? lsPT : Array.isArray(app.productTypes) ? app.productTypes : [],
                 bulkTransactions:
                     Array.isArray(lsBulkLocal) && lsBulkLocal.length
                         ? lsBulkLocal
@@ -318,7 +304,9 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
 
             alert("همگام‌سازی با AppData با موفقیت انجام شد ✅")
         } catch (e) {
-            console.error("sync error:", e)
+            if (process.env.NODE_ENV === 'development') {
+                console.error("sync error:", e)
+            }
             alert("خطا در همگام‌سازی با AppData")
         }
     }
@@ -339,14 +327,15 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
                 customerGroups: Array.isArray(restored.customerGroups) ? restored.customerGroups : [],
                 transactions: Array.isArray(restored.transactions) ? restored.transactions : [],
                 documents: Array.isArray(restored.documents) ? restored.documents : [],
-                flourTypes: Array.isArray(restored.flourTypes) ? restored.flourTypes : [],
+                productTypes: Array.isArray(restored.productTypes) ? restored.productTypes : [],
                 bulkTransactions: Array.isArray(restored.bulkTransactions) ? restored.bulkTransactions : [],
                 bulkTransactionsTehran: Array.isArray(restored.bulkTransactionsTehran) ? restored.bulkTransactionsTehran : [],
+                currencies: Array.isArray(restored.currencies) ? restored.currencies : [],
             }
 
             // --- 1) Purge any previous data to avoid merge/ghost records ---
             const KEYS_TO_CLEAR = [
-                "flourTypes",
+                "productTypes",
                 "bulkTransactions",
                 "bulkTransactionsTehran",
                 "documents",
@@ -371,11 +360,13 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
                         localStorage.setItem(key, JSON.stringify(value))
                     }
                 } catch (e) {
-                    console.warn(`نتوانست ${key} را در localStorage ذخیره کند:`, e)
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn(`نتوانست ${key} را در localStorage ذخیره کند:`, e)
+                    }
                 }
             }
 
-            setLocalStorageItem("flourTypes", restoredData.flourTypes)
+            setLocalStorageItem("productTypes", restoredData.productTypes)
             setLocalStorageItem("bulkTransactions", restoredData.bulkTransactions)
             setLocalStorageItem("bulkTransactionsTehran", restoredData.bulkTransactionsTehran)
             setLocalStorageItem("documents", restoredData.documents)
@@ -384,7 +375,7 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
             setLocalStorageItem("flour-accounting-data", restoredData)
             // سیگنال نرم به اپ برای sync فوری UI بدون نیاز به رفرش دستی
             try { window.dispatchEvent(new StorageEvent("storage", { key: "flour-accounting-data" })) } catch { }
-            try { window.dispatchEvent(new StorageEvent("storage", { key: "flourTypes" })) } catch { }
+            try { window.dispatchEvent(new StorageEvent("storage", { key: "productTypes" })) } catch { }
 
 
             // --- 3) Finally update React state (render from clean data) ---
@@ -403,9 +394,13 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
                         },
                     }),
                 })
-                console.log("AppData overwritten with restoredData ✅")
+                if (process.env.NODE_ENV === 'development') {
+                    console.log("AppData overwritten with restoredData ✅")
+                }
             } catch (e) {
-                console.warn("Failed to overwrite AppData after restore:", e)
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn("Failed to overwrite AppData after restore:", e)
+                }
             }
 
             const totalRecords = restored.backupInfo?.totalRecords
@@ -414,12 +409,14 @@ ${backupData.backupInfo.totalRecords.flourTypes} نوع آرد`,
 ${totalRecords.customers || 0} مشتری
 ${totalRecords.transactions || 0} سند
 ${totalRecords.bulkTransactions || 0} معامله 100 تنی
-${totalRecords.flourTypes || 0} نوع آرد`
+${totalRecords.productTypes || 0} نوع آرد`
                 : "بازیابی با موفقیت انجام شد!"
 
             alert(message)
         } catch (e) {
-            console.error("خطا در بازیابی:", e)
+            if (process.env.NODE_ENV === 'development') {
+                console.error("خطا در بازیابی:", e)
+            }
             alert("خطا در بازیابی فایل. لطفاً فایل معتبر انتخاب کنید.")
         }
     }
@@ -427,7 +424,7 @@ ${totalRecords.flourTypes || 0} نوع آرد`
     // -------------------- Purge helpers (optional quick tool) --------------------
     const purgeLocalAndResetAppData = async () => {
         const KEYS = [
-            "flourTypes",
+            "productTypes",
             "bulkTransactions",
             "bulkTransactionsTehran",
             "documents",
@@ -446,9 +443,10 @@ ${totalRecords.flourTypes || 0} نوع آرد`
                 customerGroups: [],
                 transactions: [],
                 documents: [],
-                flourTypes: [],
+                productTypes: [],
                 bulkTransactions: [],
                 bulkTransactionsTehran: [],
+                currencies: [],
             }
             await fetch("/api/db", {
                 method: "POST",
@@ -491,7 +489,7 @@ ${totalRecords.flourTypes || 0} نوع آرد`
                 </Card>
                 <Card className="p-4">
                     <div className="text-sm text-muted-foreground">انواع آرد</div>
-                    <div className="text-2xl font-bold">{stats.flourTypes}</div>
+                    <p className="text-2xl font-bold">{stats.productTypes}</p>
                 </Card>
             </div>
 
@@ -506,14 +504,6 @@ ${totalRecords.flourTypes || 0} نوع آرد`
                     <Card className="p-4">
                         <div className="text-sm text-muted-foreground">بدهی نقدی (دلار)</div>
                         <div className="text-lg font-bold text-red-600">{stats.dollarPayable.toLocaleString()}</div>
-                    </Card>
-                    <Card className="p-4">
-                        <div className="text-sm text-muted-foreground">طلب نقدی (تومن)</div>
-                        <div className="text-lg font-bold text-green-600">{stats.tomanReceivable.toLocaleString()}</div>
-                    </Card>
-                    <Card className="p-4">
-                        <div className="text-sm text-muted-foreground">بدهی نقدی (تومن)</div>
-                        <div className="text-lg font-bold text-red-600">{stats.tomanPayable.toLocaleString()}</div>
                     </Card>
                 </div>
             </div>
@@ -546,8 +536,8 @@ ${totalRecords.flourTypes || 0} نوع آرد`
                 <strong>راهنمای بک‌آپ:</strong>
                 <ul className="mt-2 space-y-1">
                     <li>• تمام اسناد، معاملات 100 تنی، مشتریان و انواع آرد ذخیره می‌شود</li>
-                    <li>• بدهی‌های دلاری و تومنی مشتریان محاسبه و ذخیره می‌شود</li>
-                    <li>• موجودی صندوق (دلار و تومن) در بک‌آپ لحاظ می‌شود</li>
+                    <li>• بدهی‌های دلاری مشتریان محاسبه و ذخیره می‌شود</li>
+                    <li>• موجودی صندوق (دلار) در بک‌آپ لحاظ می‌شود</li>
                     <li>• فایل بک‌آپ در تمام مرورگرها قابل بازیابی است</li>
                 </ul>
             </div>

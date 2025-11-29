@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
-import type { Transaction, Customer, FlourType } from "@/types"
+import type { Transaction, Customer, ProductType } from "@/types"
 
 // مشتری‌هایی که باید از محاسبات نقدی حذف شوند
 const EXCLUDED_CUSTOMER_NAMES = ["سود آوات و آکو", "سود حیدری", "زیاده"] as const
@@ -15,9 +15,14 @@ function resolveCustomerName(customers: Customer[] = [], customerId?: string, fa
     return found?.name
 }
 
-export function CashInventory() {
-    const { data } = useLocalStorage()
-    const [flourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
+import type { AppData } from "@/types"
+
+interface CashInventoryProps {
+    data: AppData
+}
+
+export function CashInventory({ data }: CashInventoryProps) {
+    const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
 
     // محاسبه موجودی نقدی (با حذف سه مشتری خاص)
     const calculateCashInventory = () => {
@@ -41,11 +46,11 @@ export function CashInventory() {
                 if (!amt) return
 
                 switch (transaction.type) {
-                    case "flour_purchase": // خرید آرد - من بدهکار پول میشوم
-                        cashBalance -= amt
+                    case "product_purchase": // خرید محصول - من بدهکار پول میشوم
+                        cashBalance -= transaction.amount || 0
                         break
-                    case "flour_sale": // فروش آرد - مشتری بدهکار پول میشود
-                        cashBalance += amt
+                    case "product_sale": // فروش محصول - مشتری بدهکار پول میشود
+                        cashBalance += transaction.amount || 0
                         break
                     case "cash_in": // ورود وجه - طلب من کم میشود
                         cashBalance -= amt
@@ -108,11 +113,11 @@ export function CashInventory() {
 
             let delta = 0
             switch (t.type) {
-                case "flour_purchase":  // خرید آرد → من بدهکار می‌شوم
-                    delta = -amt
+                case "product_purchase":  // خرید محصول → من بدهکار می‌شوم
+                    delta = -(t.amount || 0)
                     break
-                case "flour_sale":      // فروش آرد → طلب من بیشتر می‌شود
-                    delta = +amt
+                case "product_sale":      // فروش محصول → طلب من بیشتر می‌شود
+                    delta = +(t.amount || 0)
                     break
                 case "cash_in":         // ورود وجه از مشتری → طلب من کم می‌شود
                     delta = -amt
@@ -135,55 +140,55 @@ export function CashInventory() {
         return sum
     }
 
-    // تومنی از سیستم حذف شده است؛ دیگر محاسبه جداگانه‌ای برای تومان انجام نمی‌دهیم.
-    // محاسبه موجودی آردی
-    const calculateFlourInventory = () => {
-        const flourInventory: { [flourTypeId: string]: { credit: number; debt: number } } = {}
 
-        flourTypes.forEach((flourType: FlourType) => {
-            flourInventory[flourType.id] = { credit: 0, debt: 0 }
+    // محاسبه موجودی محصول
+    const calculateProductInventory = () => {
+        const productInventory: { [productTypeId: string]: { credit: number; debt: number } } = {}
+
+        productTypes.forEach((productType: ProductType) => {
+            productInventory[productType.id] = { credit: 0, debt: 0 }
         })
 
         data.transactions.forEach((transaction: Transaction) => {
-            if (transaction.flourTypeId && flourInventory[transaction.flourTypeId]) {
+            if (transaction.productTypeId && productInventory[transaction.productTypeId]) {
                 switch (transaction.type) {
-                    case "flour_purchase":
-                        flourInventory[transaction.flourTypeId].credit += transaction.weight || 0
+                    case "product_purchase":
+                        productInventory[transaction.productTypeId].credit += transaction.weight || 0
                         break
-                    case "flour_in":
-                        flourInventory[transaction.flourTypeId].credit -= transaction.weight || 0
+                    case "product_in":
+                        productInventory[transaction.productTypeId].credit -= transaction.weight || 0
                         break
-                    case "flour_sale":
-                        flourInventory[transaction.flourTypeId].debt += transaction.weight || 0
+                    case "product_sale":
+                        productInventory[transaction.productTypeId].debt += transaction.weight || 0
                         break
-                    case "flour_out":
-                        flourInventory[transaction.flourTypeId].debt -= transaction.weight || 0
+                    case "product_out":
+                        productInventory[transaction.productTypeId].debt -= transaction.weight || 0
                         break
                 }
             }
         })
 
-        return flourInventory
+        return productInventory
     }
 
     // محاسبه موجودی مخزن
     const calculateWarehouseInventory = () => {
-        const warehouseInventory: { [flourTypeId: string]: number } = {}
+        const warehouseInventory: { [productTypeId: string]: number } = {}
 
-        flourTypes.forEach((flourType: FlourType) => {
-            warehouseInventory[flourType.id] = 0
+        productTypes.forEach((productType: ProductType) => {
+            warehouseInventory[productType.id] = 0
         })
 
         data.transactions.forEach((transaction: Transaction) => {
-            if (transaction.flourTypeId && warehouseInventory[transaction.flourTypeId] !== undefined) {
+            if (transaction.productTypeId && warehouseInventory[transaction.productTypeId] !== undefined) {
                 switch (transaction.type) {
-                    case "flour_purchase":
-                    case "flour_in":
-                        warehouseInventory[transaction.flourTypeId] += transaction.weight || 0
+                    case "product_purchase":
+                    case "product_in":
+                        warehouseInventory[transaction.productTypeId] += transaction.weight || 0
                         break
-                    case "flour_sale":
-                    case "flour_out":
-                        warehouseInventory[transaction.flourTypeId] -= transaction.weight || 0
+                    case "product_sale":
+                    case "product_out":
+                        warehouseInventory[transaction.productTypeId] -= transaction.weight || 0
                         break
                 }
             }
@@ -194,13 +199,13 @@ export function CashInventory() {
 
     const { totalCashCredit, totalCashDebt } = calculateCashInventory()
     const generalProfit = calculateGeneralProfit()
-    const flourInventory = calculateFlourInventory()
+    const productInventory = calculateProductInventory()
     const warehouseInventory = calculateWarehouseInventory()
     const netUsd = Number(totalCashDebt || 0) - Number(totalCashCredit || 0)
 
-    const getFlourTypeName = (flourTypeId: string) => {
-        const flourType = flourTypes.find((ft) => ft.id === flourTypeId)
-        return flourType ? flourType.name : "نامشخص"
+    const getProductTypeName = (productTypeId: string) => {
+        const productType = productTypes.find((ft) => ft.id === productTypeId)
+        return productType ? productType.name : "نامشخص"
     }
 
     return (
@@ -261,48 +266,33 @@ export function CashInventory() {
                         </CardContent>
                     </Card>
 
-                    {/* ته حساب تومنی = بدهی تومنی - طلب تومنی */}
-                    <Card className={netToman > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}>
-                        <CardHeader>
-                            <CardTitle className={netToman > 0 ? "text-red-700" : "text-green-700"}>
-                                ته حساب تومنی
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className={`text-3xl font-bold ${netToman > 0 ? "text-red-700" : "text-green-700"}`}>
-                                {netToman.toLocaleString("en-US")}
-                            </div>
-                            <div className="mt-2 text-sm opacity-80">
-                                {netToman > 0 ? "به ضرر ما (بدهی خالص)" : netToman < 0 ? "به نفع ما (طلب خالص)" : "خنثی"}
-                            </div>
-                        </CardContent>
-                    </Card>
+
                 </div>
             </div>
 
-            {/* کارت‌های موجودی آردی */}
+            {/* کارت‌های موجودی محصول */}
             <Card>
                 <CardHeader>
-                    <CardTitle>موجودی آردی (تن)</CardTitle>
+                    <CardTitle>موجودی محصول (تن)</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(flourInventory).map(([flourTypeId, { credit, debt }]) => {
-                            const flourTypeName = getFlourTypeName(flourTypeId)
+                        {Object.entries(productInventory).map(([productTypeId, { credit, debt }]) => {
+                            const productTypeName = getProductTypeName(productTypeId)
                             const net = (credit || 0) - (debt || 0)
                             return (
-                                <div key={flourTypeId} className="p-4 rounded-xl border">
+                                <div key={productTypeId} className="p-4 rounded-xl border">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-semibold">{flourTypeName}</span>
+                                        <span className="font-semibold">{productTypeName}</span>
                                         <span className={`font-bold ${net >= 0 ? "text-green-600" : "text-red-600"}`}>{net.toLocaleString("fa-IR")} تن</span>
                                     </div>
                                     <div className="mt-2 text-sm text-muted-foreground">
                                         <div className="flex justify-between">
-                                            <span className="text-green-600">طلب آردی:</span>
+                                            <span className="text-green-600">طلب محصول:</span>
                                             <span className="text-green-600 font-bold">{(credit || 0).toLocaleString("fa-IR")} تن</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-red-600">بدهی آردی:</span>
+                                            <span className="text-red-600">بدهی محصول:</span>
                                             <span className="text-red-600 font-bold">{(debt || 0).toLocaleString("fa-IR")} تن</span>
                                         </div>
                                     </div>
@@ -320,12 +310,12 @@ export function CashInventory() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(warehouseInventory).map(([flourTypeId, warehouseAmount]) => {
-                            const flourTypeName = getFlourTypeName(flourTypeId)
+                        {Object.entries(warehouseInventory).map(([productTypeId, warehouseAmount]) => {
+                            const productTypeName = getProductTypeName(productTypeId)
                             return (
-                                <div key={flourTypeId} className="p-4 rounded-xl border">
+                                <div key={productTypeId} className="p-4 rounded-xl border">
                                     <div className="flex items-center justify-between">
-                                        <span className="font-semibold">{flourTypeName}</span>
+                                        <span className="font-semibold">{productTypeName}</span>
                                         <span className="font-bold">{warehouseAmount.toLocaleString("fa-IR")} تن</span>
                                     </div>
                                     <div className="mt-2 text-sm text-muted-foreground">

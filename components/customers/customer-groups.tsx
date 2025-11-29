@@ -23,22 +23,25 @@ export function CustomerGroups({ data, onDataChange }: CustomerGroupsProps) {
   const [formData, setFormData] = useState({ name: "", description: "" })
   const { t, lang } = useLang()
 
+  // تابع کمکی برای نمایش نام ترجمه‌شده برای گروه اصلی
+  const getDisplayGroupName = (group: CustomerGroup) => {
+    if (group.id === "main-group") {
+      return lang === "fa" ? "اصلی" : "Main"
+    }
+    return group.name
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (editingGroup) {
-      if (editingGroup.isProtected) {
-        alert(t("editGroupProtected"))
-        return
-      }
-
       const updatedGroups = data.customerGroups.map((group) =>
         group.id === editingGroup.id ? { ...group, name: formData.name, description: formData.description } : group,
       )
       onDataChange({ ...data, customerGroups: updatedGroups })
     } else {
       const newGroup: CustomerGroup = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         name: formData.name,
         description: formData.description,
         createdAt: new Date().toISOString(),
@@ -55,11 +58,6 @@ export function CustomerGroups({ data, onDataChange }: CustomerGroupsProps) {
   }
 
   const handleEdit = (group: CustomerGroup) => {
-    if (group.isProtected) {
-      alert(t("editGroupProtected"))
-      return
-    }
-
     setEditingGroup(group)
     setFormData({ name: group.name, description: group.description || "" })
     setIsDialogOpen(true)
@@ -138,7 +136,7 @@ export function CustomerGroups({ data, onDataChange }: CustomerGroupsProps) {
           <Card key={group.id} className={`p-4 ${group.isProtected ? "border-orange-200 bg-orange-50" : ""}`}>
             <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold">{group.name}</h3>
+                <h3 className="font-semibold">{getDisplayGroupName(group)}</h3>
                 {group.isProtected && (
                   <div title={t("protectedGroupTitle")}>
                     <Shield className="h-4 w-4 text-orange-600" />
@@ -150,8 +148,7 @@ export function CustomerGroups({ data, onDataChange }: CustomerGroupsProps) {
                   size="sm"
                   variant="ghost"
                   onClick={() => handleEdit(group)}
-                  disabled={group.isProtected}
-                  title={group.isProtected ? t("editGroupProtected") : t("editGroup")}
+                  title={t("editGroup")}
                 >
                   <Edit className="h-3 w-3" />
                 </Button>

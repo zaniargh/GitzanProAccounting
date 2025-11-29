@@ -10,11 +10,16 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Edit2, Trash2, Search } from "lucide-react"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
-import type { FlourType } from "@/types"
+import type { ProductType } from "@/types"
 import { useLang } from "@/components/language-provider"
 
-export function FlourTypesManager() {
-  const [flourTypes, setFlourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
+interface ProductTypesManagerProps {
+  productTypes: ProductType[]
+  onProductTypesChange: (types: ProductType[]) => void
+}
+
+export function ProductTypesManager({ productTypes, onProductTypesChange }: ProductTypesManagerProps) {
+  // const [productTypes, setProductTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const [searchTerm, setSearchTerm] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -25,15 +30,15 @@ export function FlourTypesManager() {
   })
   const { t, lang } = useLang()
 
-  const filteredFlourTypes = flourTypes.filter((type) => type.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredProductTypes = productTypes.filter((type) => type.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim()) return
 
     if (editingId) {
-      setFlourTypes((prev) =>
-        prev.map((type) =>
+      onProductTypesChange(
+        productTypes.map((type) =>
           type.id === editingId
             ? {
               ...type,
@@ -46,21 +51,21 @@ export function FlourTypesManager() {
       )
       setEditingId(null)
     } else {
-      const newFlourType: FlourType = {
-        id: Date.now().toString(),
+      const newProductType: ProductType = {
+        id: crypto.randomUUID(),
         name: formData.name,
         description: formData.description,
         measurementType: formData.measurementType,
         createdAt: new Date().toISOString(),
       }
-      setFlourTypes((prev) => [...prev, newFlourType])
+      onProductTypesChange([...productTypes, newProductType])
     }
 
     setFormData({ name: "", description: "", measurementType: "weight" })
     setIsAdding(false)
   }
 
-  const handleEdit = (type: FlourType) => {
+  const handleEdit = (type: ProductType) => {
     setFormData({
       name: type.name,
       description: type.description || "",
@@ -71,8 +76,8 @@ export function FlourTypesManager() {
   }
 
   const handleDelete = (id: string) => {
-    if (confirm("آیا از حذف این نوع آرد اطمینان دارید؟")) {
-      setFlourTypes((prev) => prev.filter((type) => type.id !== id))
+    if (confirm(t("deleteConfirmation"))) {
+      onProductTypesChange(productTypes.filter((type) => type.id !== id))
     }
   }
 
@@ -177,7 +182,7 @@ export function FlourTypesManager() {
 
       {/* لیست کالاها */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredFlourTypes.map((type) => (
+        {filteredProductTypes.map((type) => (
           <Card key={type.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-2">
@@ -210,14 +215,11 @@ export function FlourTypesManager() {
         ))}
       </div>
 
-      {filteredFlourTypes.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-gray-500">
-              {searchTerm ? t("productEmptySearch") : t("productEmpty")}
-            </p>
-          </CardContent>
-        </Card>
+      {filteredProductTypes.length === 0 && searchTerm && (
+        <div className="text-center py-8 text-muted-foreground">{t("productEmptySearch")}</div>
+      )}
+      {filteredProductTypes.length === 0 && !searchTerm && (
+        <div className="text-center py-8 text-muted-foreground">{t("productEmpty")}</div>
       )}
     </div>
   )

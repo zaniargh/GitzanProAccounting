@@ -12,9 +12,8 @@ type Props = {
         weight?: number
         unitPrice?: number
         amount?: number
-        toman?: number
         datePersian: string
-        dateGregorian?: string 
+        dateGregorian?: string
         description?: string
     }>
     company?: {
@@ -91,7 +90,6 @@ export default function LetterheadPrint({ data, rows, company }: Props) {
                                 <th>مقدار</th>
                                 <th>قیمت واحد</th>
                                 <th>مبلغ (دلار)</th>
-                                <th>تومن</th>
                                 <th>تاریخ</th>
                                 <th>میلادی</th>
                                 <th>توضیحات</th>
@@ -107,7 +105,6 @@ export default function LetterheadPrint({ data, rows, company }: Props) {
                                     <td>{r.weight ? `${r.weight.toLocaleString("en-US")} تن` : "-"}</td>
                                     <td>{r.unitPrice != null ? r.unitPrice.toLocaleString("en-US") : "-"}</td>
                                     <td className="green">{r.amount != null ? r.amount.toLocaleString("en-US") : "-"}</td>
-                                    <td className="red">{r.toman != null ? r.toman.toLocaleString("en-US") : "-"}</td>
                                     <td>{r.datePersian}</td>
                                     <td>{r.dateGregorian}</td>
                                     <td className="desc">{r.description ?? "-"}</td>

@@ -6,6 +6,7 @@ import "./globals.css"
 
 // ✅ اضافه شده: Provider زبان
 import { LanguageProvider } from "@/components/language-provider"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 const vazirmatn = Vazirmatn({
     subsets: ["arabic"],
@@ -28,9 +29,11 @@ export default function RootLayout({
         <html lang="fa" dir="rtl">
             <body className={`font-sans ${vazirmatn.variable} antialiased`}>
                 {/* ✅ اینجا Provider اضافه شده تا همه صفحات به ترجمه دسترسی داشته باشن */}
-                <LanguageProvider>
-                    <Suspense fallback={null}>{children}</Suspense>
-                </LanguageProvider>
+                <ErrorBoundary>
+                    <LanguageProvider>
+                        <Suspense fallback={null}>{children}</Suspense>
+                    </LanguageProvider>
+                </ErrorBoundary>
                 {/* Analytics component intentionally removed */}
             </body>
         </html>

@@ -23,7 +23,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Language>("en")
   const translations = lang === "fa" ? fa : en
 
-  const t = (key: string) => translations[key] || key
+  const t = (key: string) => (translations as Record<string, string>)[key] || key
 
   return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>

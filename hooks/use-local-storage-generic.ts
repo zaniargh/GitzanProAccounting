@@ -53,9 +53,11 @@ export function useLocalStorageGeneric<T>(key: string, initialValue: T) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: valueToStore }),
-      }).catch(() => {})
+      }).catch(() => { })
     } catch (error) {
-      console.error(`خطا در ذخیره ${key}:`, error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`خطا در ذخیره ${key}:`, error)
+      }
     }
   }
 

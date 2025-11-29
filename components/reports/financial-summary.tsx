@@ -11,45 +11,57 @@ interface FinancialSummaryProps {
 
 export function FinancialSummary({ data }: FinancialSummaryProps) {
   const calculateSummary = () => {
-    let totalCashIn = 0
-    let totalCashOut = 0
-    let totalFlourIn = 0
-    let totalFlourOut = 0
-    let totalFlourInAmount = 0
-    let totalFlourOutAmount = 0
+    let cashIn = 0
+    let cashOut = 0
+    let totalProductIn = 0
+    let totalProductOut = 0
+    let totalProductPurchase = 0
+    let totalProductSale = 0
+    let productInAmount = 0
+    let productOutAmount = 0
 
     data.transactions.forEach((transaction) => {
       switch (transaction.type) {
         case "cash_in":
-          totalCashIn += transaction.amount
+          cashIn += transaction.amount || 0
           break
         case "cash_out":
-          totalCashOut += transaction.amount
+          cashOut += transaction.amount || 0
           break
-        case "flour_in":
-          totalFlourIn += transaction.quantity || 0
-          totalFlourInAmount += transaction.amount
+        case "product_in":
+          totalProductIn += transaction.weight || 0
+          productInAmount += transaction.amount || 0
           break
-        case "flour_out":
-          totalFlourOut += transaction.quantity || 0
-          totalFlourOutAmount += transaction.amount
+        case "product_out":
+          totalProductOut += transaction.weight || 0
+          productOutAmount += transaction.amount || 0
+          break
+        case "product_purchase":
+          totalProductIn += transaction.weight || 0
+          totalProductPurchase += transaction.weight || 0
+          cashOut += transaction.amount || 0
+          break
+        case "product_sale":
+          totalProductOut += transaction.weight || 0
+          totalProductSale += transaction.weight || 0
+          cashIn += transaction.amount || 0
           break
       }
     })
 
-    const netCash = totalCashIn - totalCashOut
-    const netFlour = totalFlourIn - totalFlourOut
-    const totalRevenue = totalCashIn + totalFlourOutAmount
-    const totalExpenses = totalCashOut + totalFlourInAmount
+    const netCash = cashIn - cashOut
+    const netProduct = totalProductIn - totalProductOut
+    const totalRevenue = cashIn + productOutAmount
+    const totalExpenses = cashOut + productInAmount
     const netProfit = totalRevenue - totalExpenses
 
     return {
-      totalCashIn,
-      totalCashOut,
+      totalCashIn: cashIn,
+      totalCashOut: cashOut,
       netCash,
-      totalFlourIn,
-      totalFlourOut,
-      netFlour,
+      totalProductIn,
+      totalProductOut,
+      netProduct,
       totalRevenue,
       totalExpenses,
       netProfit,
@@ -85,8 +97,8 @@ export function FinancialSummary({ data }: FinancialSummaryProps) {
       bgColor: summary.netProfit >= 0 ? "bg-green-50" : "bg-red-50",
     },
     {
-      title: "موجودی آرد",
-      value: summary.netFlour,
+      title: "موجودی محصول",
+      value: summary.netProduct,
       icon: Package,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
@@ -140,21 +152,21 @@ export function FinancialSummary({ data }: FinancialSummaryProps) {
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-semibold mb-4">موجودی آرد</h3>
+          <h3 className="font-semibold mb-4">موجودی محصول</h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <span>ورود آرد:</span>
-              <Badge className="bg-blue-100 text-blue-800">{formatNumber(summary.totalFlourIn)} تن</Badge>
+              <span>ورود محصول:</span>
+              <Badge className="bg-blue-100 text-blue-800">{formatNumber(summary.totalProductIn)} تن</Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span>خروج آرد:</span>
-              <Badge className="bg-orange-100 text-orange-800">{formatNumber(summary.totalFlourOut)} تن</Badge>
+              <span>خروج محصول:</span>
+              <Badge className="bg-orange-100 text-orange-800">{formatNumber(summary.totalProductOut)} تن</Badge>
             </div>
             <hr />
             <div className="flex justify-between items-center font-semibold">
               <span>موجودی فعلی:</span>
-              <Badge className={summary.netFlour >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                {formatNumber(summary.netFlour)} تن
+              <Badge className={summary.netProduct >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                {formatNumber(summary.netProduct)} تن
               </Badge>
             </div>
           </div>

@@ -14,12 +14,11 @@ export interface Customer {
   createdAt: string
   // بدهی‌ها و بستانکاری‌ها
   cashDebt: number // بدهی نقدی (دلار) - مثبت یعنی بدهکار، منفی یعنی بستانکار
-  tomanDebt?: number // اضافه کردن بدهی تومنی - مثبت یعنی بدهکار، منفی یعنی بستانکار
-  flourDebts: { [flourTypeId: string]: number } // بدهی آردی (تن) - مثبت یعنی بدهکار، منفی یعنی بستانکار
+  productDebts: { [productTypeId: string]: number } // بدهی آردی (تن) - مثبت یعنی بدهکار، منفی یعنی بستانکار
   isProtected?: boolean // برای جلوگیری از حذف مشتریان سیستمی مثل حساب‌های هزینه
 }
 
-export interface FlourType {
+export interface ProductType {
   id: string
   name: string
   description?: string
@@ -28,14 +27,12 @@ export interface FlourType {
 }
 
 export type TransactionType =
-  | "flour_in"
-  | "flour_out"
-  | "flour_purchase"
-  | "flour_sale"
+  | "product_in"
+  | "product_out"
+  | "product_purchase"
+  | "product_sale"
   | "cash_in"
   | "cash_out"
-  | "toman_in"
-  | "toman_out"
   | "expense"
   | "income"
 
@@ -44,16 +41,19 @@ export interface Transaction {
   documentNumber: string // شماره سند مختص به هر سند
   type: TransactionType
   customerId: string
-  amount: number // مبلغ کل (دلار یا تومن بسته به نوع تراکنش)
+  amount: number // مبلغ کل (دلار بسته به نوع تراکنش)
   weight?: number // In tons, for flour transactions
   quantity?: number // New field: Number of items
   unitPrice?: number // In USD per ton
+  customerName?: string // Optional customer name for display or legacy support
   currencyId?: string // ارز معامله
   weightUnit?: string // واحد وزن (kg, ton, etc)
-  flourTypeId?: string // برای اسناد مربوط به آرد
+  productTypeId?: string // ارجاع به نوع محصول
   description: string
-  date: string
-  createdAt: string
+  date: string // تاریخ سند (از کاربر)
+  createdAt: string // تاریخ ایجاد دقیق
+  linkedTransactionId?: string // لینک به تراکنش مرتبط (برای Double-Entry)
+  accountId?: string // حساب نقدی (Cash Safe یا Bank Account) برای cash_in و cash_out
 }
 
 export interface Currency {
@@ -61,6 +61,19 @@ export interface Currency {
   name: string
   symbol: string
   isBase?: boolean
+  createdAt: string
+}
+
+export interface BankAccount {
+  id: string
+  bankName: string
+  accountNumber: string
+  accountHolder: string
+  initialBalance: number
+  currencyId: string
+  groupId?: string
+  description?: string
+  createdAt: string
 }
 
 export interface BulkTransaction {
@@ -71,7 +84,7 @@ export interface BulkTransaction {
 
   // اطلاعات خرید
   purchaseCustomerId: string
-  flourTypeId: string
+  productTypeId: string
   purchaseWeight: number
   purchaseUnitPrice: number
 
@@ -79,8 +92,8 @@ export interface BulkTransaction {
   sales: Array<{
     id: string
     customerId: string
-    weight: any
-    unitPrice: any
+    weight: number
+    unitPrice: number
   }>
 
   // هزینه‌ها
@@ -88,7 +101,6 @@ export interface BulkTransaction {
   russiaFreightFee?: number // هزینه کرایه روسیه
   transferFee?: number // هزینه حواله
   astaraFreight: number
-  astaraTomanAmount?: number
   dollarRate?: number
   customsClearance: number
   manzariyehCustoms?: number // گمرک منظریه
@@ -104,13 +116,27 @@ export interface BulkTransaction {
   cargoCode?: string
 }
 
+export interface Document {
+  id: string
+  number: string
+  date: string
+  type: string
+  customerId: string
+  amount: number
+  description: string
+  createdAt: string
+}
+
 export interface AppData {
   customerGroups: CustomerGroup[]
   customers: Customer[]
   transactions: Transaction[]
-  flourTypes: FlourType[]
+  productTypes: ProductType[]
   currencies: Currency[] // اضافه کردن ارزها
+  bankAccounts: BankAccount[]
   bulkTransactions: BulkTransaction[] // اضافه کردن bulkTransactions
+  bulkTransactionsTehran?: any[] // اضافه کردن bulkTransactionsTehran
+  documents: Document[] // اضافه کردن documents
   settings?: {
     baseCurrencyId?: string
     baseWeightUnit?: string

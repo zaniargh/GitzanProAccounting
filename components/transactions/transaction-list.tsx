@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Package, DollarSign, Search, Trash2, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
-import type { AppData, TransactionType, FlourType } from "@/types"
+import type { AppData, TransactionType, ProductType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import { formatBothDatesWithTime } from "@/lib/date-utils"
 import { buildLetterheadHTML, type CompanyInfo } from "@/components/print/build-letterhead-html"
@@ -19,15 +19,15 @@ const getAmountClass = (type: string) => {
   // نوع‌هایی که باید سبز باشند
   const green = new Set([
     "cash_out",      // خروج وجه (دلار)
-    "flour_out",     // خروج آرد
-    "flour_sale" // فروش آرد
+    "product_out",     // خروج محصول
+    "product_sale" // فروش محصول
   ])
 
   // نوع‌هایی که باید قرمز باشند
   const red = new Set([
     "cash_in",    // ورود وجه (دلار)
-    "flour_in",   // ورود آرد
-    "flour_purchase", // خرید آرد
+    "product_in",   // ورود محصول
+    "product_purchase", // خرید محصول
     "expense"     // هزینه
   ])
 
@@ -42,16 +42,43 @@ interface TransactionListProps {
   onEdit?: (transaction: any) => void
 }
 
-type SortField = "documentNumber" | "type" | "customer" | "flourType" | "weight" | "quantity" | "unitPrice" | "amount" | "date" | "description"
+type SortField = "documentNumber" | "type" | "customer" | "productType" | "weight" | "quantity" | "unitPrice" | "amount" | "date" | "description"
 type SortDirection = "asc" | "desc"
 
 export function TransactionList({ data, onDataChange, onEdit }: TransactionListProps) {
-  const [flourTypes] = useLocalStorageGeneric<FlourType[]>("flourTypes", [])
+  const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const { t, lang } = useLang()
 
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<TransactionType | "all">("all")
   const [filterCustomer, setFilterCustomer] = useState("all")
+  const [filterProductType, setFilterProductType] = useState("all")
+  const [displayWeightUnit, setDisplayWeightUnit] = useState("original")
+
+  const convertWeight = (weight: number, fromUnit: string, toUnit: string) => {
+    if (fromUnit === toUnit) return weight
+    if (toUnit === "original") return weight
+
+    // Convert to Ton first
+    let weightInTon = weight
+    switch (fromUnit) {
+      case "kg": weightInTon = weight / 1000; break;
+      case "g": weightInTon = weight / 1000000; break;
+      case "mg": weightInTon = weight / 1000000000; break;
+      case "lb": weightInTon = weight / 2204.62; break;
+      case "ton": default: weightInTon = weight; break;
+    }
+
+    // Convert from Ton to target unit
+    switch (toUnit) {
+      case "kg": return weightInTon * 1000;
+      case "g": return weightInTon * 1000000;
+      case "mg": return weightInTon * 1000000000;
+      case "lb": return weightInTon * 2204.62;
+      case "ton": default: return weightInTon;
+    }
+    return weightInTon
+  }
 
   const [sortField, setSortField] = useState<SortField>("date")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
@@ -64,21 +91,21 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
     return data.customers.find((customer) => customer.id === customerId)?.name || t("unknown")
   }
 
-  const getFlourTypeName = (flourTypeId?: string) => {
-    if (!flourTypeId) return "-"
-    return flourTypes.find((flourType) => flourType.id === flourTypeId)?.name || t("unknown")
+  const getProductTypeName = (productTypeId?: string) => {
+    if (!productTypeId) return "-"
+    return productTypes.find((productType) => productType.id === productTypeId)?.name || t("unknown")
   }
 
   const getTransactionTypeInfo = (type: TransactionType) => {
     switch (type) {
-      case "flour_in":
-        return { label: t("flourIn"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowDown }
-      case "flour_out":
-        return { label: t("flourOut"), icon: Package, color: "bg-red-100 text-red-800", arrow: ArrowUp }
-      case "flour_purchase":
-        return { label: t("flourPurchase"), icon: Package, color: "bg-blue-100 text-blue-800", arrow: ArrowDown }
-      case "flour_sale":
-        return { label: t("flourSale"), icon: Package, color: "bg-purple-100 text-purple-800", arrow: ArrowUp }
+      case "product_in":
+        return { label: t("productIn"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowDown }
+      case "product_out":
+        return { label: t("productOut"), icon: Package, color: "bg-red-100 text-red-800", arrow: ArrowUp }
+      case "product_purchase":
+        return { label: t("productPurchase"), icon: Package, color: "bg-blue-100 text-blue-800", arrow: ArrowDown }
+      case "product_sale":
+        return { label: t("productSale"), icon: Package, color: "bg-purple-100 text-purple-800", arrow: ArrowUp }
       case "cash_in":
         return { label: t("cashIn"), icon: DollarSign, color: "bg-green-100 text-green-800", arrow: ArrowDown }
       case "cash_out":
@@ -96,16 +123,30 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
     return data.transactions.filter((transaction) => {
       const matchesSearch =
         getCustomerName(transaction.customerId).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        transaction.description.toLowerCase().includes(searchTerm.toLowerCase())
+        transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (transaction.productTypeId && getProductTypeName(transaction.productTypeId).toLowerCase().includes(searchTerm.toLowerCase()))
+
       const matchesType = filterType === "all" || transaction.type === filterType
       const matchesCustomer = filterCustomer === "all" || transaction.customerId === filterCustomer
-      return matchesSearch && matchesType && matchesCustomer
+      const matchesProductType = filterProductType === "all" || transaction.productTypeId === filterProductType
+
+      return matchesSearch && matchesType && matchesCustomer && matchesProductType
     })
-  }, [data.transactions, searchTerm, filterType, filterCustomer])
+  }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType])
 
   const handleDelete = (transactionId: string) => {
     if (confirm(t("deleteDocumentConfirm"))) {
-      const updatedTransactions = data.transactions.filter((transaction) => transaction.id !== transactionId)
+      const transactionToDelete = data.transactions.find(t => t.id === transactionId)
+      let transactionsToDelete = [transactionId]
+
+      // اگر تراکنش مرتبط دارد، آن را هم حذف کن
+      if (transactionToDelete?.linkedTransactionId) {
+        transactionsToDelete.push(transactionToDelete.linkedTransactionId)
+      }
+
+      const updatedTransactions = data.transactions.filter((transaction) =>
+        !transactionsToDelete.includes(transaction.id)
+      )
       onDataChange({
         ...data,
         transactions: updatedTransactions,
@@ -157,9 +198,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           aValue = getCustomerName(a.customerId)
           bValue = getCustomerName(b.customerId)
           break
-        case "flourType":
-          aValue = getFlourTypeName(a.flourTypeId)
-          bValue = getFlourTypeName(b.flourTypeId)
+        case "productType":
+          aValue = getProductTypeName(a.productTypeId)
+          bValue = getProductTypeName(b.productTypeId)
           break
         case "weight":
           aValue = a.weight || 0
@@ -212,20 +253,10 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, filterType, filterCustomer])
-
-  // Debug logging
-  useEffect(() => {
-    console.log("[TransactionList] Total transactions:", data.transactions.length)
-    console.log("[TransactionList] Filtered transactions:", filteredTransactions.length)
-    console.log("[TransactionList] Sorted transactions:", sortedTransactions.length)
-    console.log("[TransactionList] Paginated transactions:", paginatedTransactions.length)
-    console.log("[TransactionList] Current page:", currentPage, "Items per page:", itemsPerPage)
-  }, [data.transactions.length, filteredTransactions.length, sortedTransactions.length, paginatedTransactions.length, currentPage, itemsPerPage])
+  }, [searchTerm, filterType, filterCustomer, filterProductType])
 
   const handlePrintOnLetterhead = () => {
     const rows = sortedTransactions.map((t) => {
-      const isUSD = true
       const unitPrice = (t.unitPrice != null)
         ? t.unitPrice
         : (t.weight && t.amount ? t.amount / t.weight : undefined)
@@ -234,12 +265,11 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         documentNumber: t.documentNumber ?? "-",
         type: getTransactionTypeInfo(t.type).label,
         customerName: getCustomerName(t.customerId),
-        flourTypeName: getFlourTypeName(t.flourTypeId),
+        productTypeName: getProductTypeName(t.productTypeId),
         weight: t.weight ? `${t.weight} ${t.weightUnit || "ton"}` : "-",
         quantity: t.quantity,
         unitPrice: unitPrice ? `${unitPrice} ${data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}/${t.weightUnit || "ton"}` : "-",
         amount: `${t.amount} ${data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}`,
-        toman: undefined,
         datePersian: formatDate(t.date || t.createdAt || "").persian,
         description: t.description ?? "-",
       }
@@ -279,14 +309,14 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       const currencySymbol = data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$";
       const weightUnitLabel = t.weightUnit || "ton";
       const usd = `${formatNumber(t.amount || 0)} ${currencySymbol}`;
-      const green = new Set(["cash_out", "flour_out", "flour_sale"]);
-      const red = new Set(["cash_in", "flour_in", "flour_purchase", "expense"]);
+      const green = new Set(["cash_out", "product_out", "product_sale"]);
+      const red = new Set(["cash_in", "product_in", "product_purchase", "expense"]);
       const usdCls = green.has(t.type) ? "green" : red.has(t.type) ? "red" : "";
       return `<tr>
         <td>${t.documentNumber || "-"}</td>
         <td>${getTransactionTypeInfo(t.type).label}</td>
         <td>${getCustomerName(t.customerId)}</td>
-        <td>${getFlourTypeName(t.flourTypeId)}</td>
+        <td>${getProductTypeName(t.productTypeId)}</td>
         <td>${t.quantity ? `${formatNumber(t.quantity)}` : "-"}</td>
         <td>${t.weight ? `${formatNumber(t.weight)} ${weightUnitLabel}` : "-"}</td>
         <td>${(t.unitPrice != null) ? `${formatNumber(t.unitPrice)} ${currencySymbol}/${weightUnitLabel}` : ((t.weight && t.amount) ? `${formatNumber((t.amount) / (t.weight))} ${currencySymbol}/${weightUnitLabel}` : "-")}</td>
@@ -353,13 +383,14 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("allDocuments")}</SelectItem>
-            <SelectItem value="flour_in">{t("flourIn")}</SelectItem>
-            <SelectItem value="flour_out">{t("flourOut")}</SelectItem>
-            <SelectItem value="flour_purchase">{t("flourPurchase")}</SelectItem>
-            <SelectItem value="flour_sale">{t("flourSale")}</SelectItem>
+            <SelectItem value="product_in">{t("productIn")}</SelectItem>
+            <SelectItem value="product_out">{t("productOut")}</SelectItem>
+            <SelectItem value="product_purchase">{t("productPurchase")}</SelectItem>
+            <SelectItem value="product_sale">{t("productSale")}</SelectItem>
             <SelectItem value="cash_in">{t("cashIn")}</SelectItem>
             <SelectItem value="cash_out">{t("cashOut")}</SelectItem>
             <SelectItem value="expense">{t("expense")}</SelectItem>
+            <SelectItem value="income">{t("income")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterCustomer} onValueChange={setFilterCustomer}>
@@ -373,6 +404,32 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                 {customer.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterProductType} onValueChange={setFilterProductType}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder={t("productType")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allProductTypes")}</SelectItem>
+            {productTypes.map((productType) => (
+              <SelectItem key={productType.id} value={productType.id}>
+                {productType.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={displayWeightUnit} onValueChange={setDisplayWeightUnit}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder={t("weightUnit")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="original">{t("originalUnit")}</SelectItem>
+            <SelectItem value="ton">{t("weightUnit_ton")}</SelectItem>
+            <SelectItem value="kg">{t("weightUnit_kg")}</SelectItem>
+            <SelectItem value="lb">{t("weightUnit_lb")}</SelectItem>
+            <SelectItem value="g">{t("weightUnit_g")}</SelectItem>
+            <SelectItem value="mg">{t("weightUnit_mg")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -415,10 +472,10 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                 <Button
                   variant="ghost"
                   className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("flourType")}
+                  onClick={() => handleSort("productType")}
                 >
-                  {t("flourType")}
-                  {getSortIcon("flourType")}
+                  {t("productType")}
+                  {getSortIcon("productType")}
                 </Button>
               </TableHead>
               <TableHead className="text-center text-xs p-2">
@@ -461,7 +518,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                   {getSortIcon("amount")}
                 </Button>
               </TableHead>
-              <TableHead className="text-center text-xs p-2">{t("toman")}</TableHead>
+
               <TableHead className="text-center text-xs p-2">
                 <Button
                   variant="ghost"
@@ -501,29 +558,29 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 max-w-[100px] truncate">{getCustomerName(transaction.customerId)}</TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[80px] truncate">{getFlourTypeName(transaction.flourTypeId)}</TableCell>
+                  <TableCell className="text-center text-xs p-2 max-w-[80px] truncate">{getProductTypeName(transaction.productTypeId)}</TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
                     {transaction.quantity ? `${formatNumber(transaction.quantity)}` : "-"}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {transaction.weight ? `${formatNumber(transaction.weight)} ${transaction.weightUnit || "ton"}` : "-"}
+                    {transaction.weight ? (
+                      displayWeightUnit === "original" ? (
+                        `${formatNumber(transaction.weight)} ${transaction.weightUnit || "ton"}`
+                      ) : (
+                        `${formatNumber(convertWeight(transaction.weight, transaction.weightUnit || "ton", displayWeightUnit))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                      )
+                    ) : "-"}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
                     {(transaction.unitPrice != null) ? `${formatNumber(transaction.unitPrice)}`
                       : ((transaction.weight && transaction.amount) ? `${formatNumber(transaction.amount / transaction.weight)}` : "-")}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {transaction.type === "toman_in" || transaction.type === "toman_out"
-                      ? "-"
-                      : (<span className={`font-bold ${getAmountClass(transaction.type)}`}>
-                        {formatNumber(transaction.amount)} {data.currencies?.find(c => c.id === transaction.currencyId)?.symbol || "$"}
-                      </span>)}
+                    <span className={`font-bold ${getAmountClass(transaction.type)}`}>
+                      {formatNumber(transaction.amount)} {data.currencies?.find(c => c.id === transaction.currencyId)?.symbol || "$"}
+                    </span>
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {transaction.type === "toman_in" || transaction.type === "toman_out"
-                      ? (<span className={`font-bold ${getAmountClass(transaction.type)}`}>{formatNumber(transaction.amount)}</span>)
-                      : "-"}
-                  </TableCell>
+
                   <TableCell className="text-center text-[10px] p-2">
                     {lang === "fa" ? (
                       <div>

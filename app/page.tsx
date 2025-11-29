@@ -7,33 +7,36 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { CustomerGroups } from "@/components/customers/customer-groups"
 import { CustomerList } from "@/components/customers/customer-list"
 import { Currencies } from "@/components/settings/currencies"
-import { FlourTypesManager } from "@/components/flour-types/flour-types-manager"
+import { BankAccounts } from "@/components/settings/bank-accounts"
+import { ProductTypesManager } from "@/components/product-types/product-types-manager"
 import { TransactionForm } from "@/components/transactions/transaction-form"
 import { FinancialSummary } from "@/components/reports/financial-summary"
 import { CustomerReport } from "@/components/reports/customer-report"
 import { DateRangeReport } from "@/components/reports/date-range-report"
 import { CashInventory } from "@/components/cash-inventory/cash-inventory"
+import { TransactionList } from "@/components/transactions/transaction-list"
 import { DocumentsList } from "@/components/documents/documents-list"
 import { Card } from "@/components/ui/card"
+import type { ProductType } from "@/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2 } from "lucide-react"
 import { useLang } from "@/components/language-provider"
 
 export default function HomePage() {
   const { data, saveData, isLoading } = useLocalStorage()
-  const [flourTypes, saveFlourTypes] = useLocalStorageGeneric("flourTypes", [])
+  const [productTypes, saveProductTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const cleanupRanRef = useRef(false)
 
   useEffect(() => {
     try {
-      // اگر در اسنپ‌شات اصلی لیست آرد داریم و لیست محلی خالی/کم است، sync کن
-      if (Array.isArray(data?.flourTypes) && data.flourTypes.length > 0) {
-        if (!Array.isArray(flourTypes) || flourTypes.length < data.flourTypes.length) {
-          saveFlourTypes(data.flourTypes)
+      // اگر در اسنپ‌شات اصلی لیست محصولات داریم و لیست محلی خالی/کم است، sync کن
+      if (Array.isArray(data?.productTypes) && data.productTypes.length > 0) {
+        if (!Array.isArray(productTypes) || productTypes.length < data.productTypes.length) {
+          saveProductTypes(data.productTypes)
         }
       }
     } catch { }
-  }, [data?.flourTypes, flourTypes, saveFlourTypes])
+  }, [data?.productTypes, productTypes, saveProductTypes])
 
   // پاک‌سازی مشتری‌ها و گروه‌های پیش‌فرض قدیمی (فقط یک‌بار روی داده‌های موجود)
   useEffect(() => {
@@ -71,6 +74,95 @@ export default function HomePage() {
     }
   }, [data, isLoading, saveData])
 
+  // ایجاد حساب‌های پیش‌فرض دائمی (صندوق من و انبار)
+  useEffect(() => {
+    if (isLoading || !data) return
+
+    let needsUpdate = false
+    let updatedCustomers = [...data.customers]
+    let updatedGroups = [...data.customerGroups]
+
+    // ایجاد گروه Main محافظت شده
+    const mainGroupExists = data.customerGroups.some(g => g.id === "main-group")
+    let mainGroupId = "main-group"
+
+    if (!mainGroupExists) {
+      const newGroup = {
+        id: "main-group",
+        name: "Main",
+        description: "Main and default group",
+        createdAt: new Date().toISOString(),
+        isProtected: true,
+      }
+      updatedGroups.push(newGroup)
+      needsUpdate = true
+    }
+
+    // ایجاد یا به‌روزرسانی حساب صندوق من
+    const cashSafeIndex = updatedCustomers.findIndex(c => c.id === "default-cash-safe")
+    if (cashSafeIndex === -1) {
+      // ایجاد حساب جدید
+      updatedCustomers.push({
+        id: "default-cash-safe",
+        name: "Cash Safe",
+        phone: "-",
+        groupId: mainGroupId,
+        createdAt: new Date().toISOString(),
+        cashDebt: 0,
+        productDebts: {},
+        isProtected: true,
+      })
+      needsUpdate = true
+    } else {
+      // به‌روزرسانی حساب موجود: اطمینان از اختصاص به گروه Main و فعال بودن حفاظت
+      const cashSafe = updatedCustomers[cashSafeIndex]
+      if (cashSafe.groupId !== mainGroupId || !cashSafe.isProtected) {
+        updatedCustomers[cashSafeIndex] = {
+          ...cashSafe,
+          groupId: mainGroupId,
+          isProtected: true,
+        }
+        needsUpdate = true
+      }
+    }
+
+    // ایجاد یا به‌روزرسانی حساب انبار
+    const warehouseIndex = updatedCustomers.findIndex(c => c.id === "default-warehouse")
+    if (warehouseIndex === -1) {
+      // ایجاد حساب جدید
+      updatedCustomers.push({
+        id: "default-warehouse",
+        name: "Warehouse",
+        phone: "-",
+        groupId: mainGroupId,
+        createdAt: new Date().toISOString(),
+        cashDebt: 0,
+        productDebts: {},
+        isProtected: true,
+      })
+      needsUpdate = true
+    } else {
+      // به‌روزرسانی حساب موجود: اطمینان از اختصاص به گروه Main و فعال بودن حفاظت
+      const warehouse = updatedCustomers[warehouseIndex]
+      if (warehouse.groupId !== mainGroupId || !warehouse.isProtected) {
+        updatedCustomers[warehouseIndex] = {
+          ...warehouse,
+          groupId: mainGroupId,
+          isProtected: true,
+        }
+        needsUpdate = true
+      }
+    }
+
+    if (needsUpdate) {
+      void saveData({
+        ...data,
+        customers: updatedCustomers,
+        customerGroups: updatedGroups,
+      })
+    }
+  }, [data, isLoading, saveData])
+
   const [activeSection, setActiveSection] = useState("dashboard")
   const { t, lang } = useLang()
 
@@ -96,24 +188,24 @@ export default function HomePage() {
         const receivableUSD = data.customers.reduce((sum, c) => c.cashDebt > 0 ? sum + c.cashDebt : sum, 0)
         const payableUSD = data.customers.reduce((sum, c) => c.cashDebt < 0 ? sum + Math.abs(c.cashDebt) : sum, 0)
 
-        // Flour inventory by type
-        const flourInventory: { [key: string]: { name: string, total: number } } = {}
-        data.flourTypes?.forEach(ft => {
-          flourInventory[ft.id] = { name: ft.name, total: 0 }
+        // Product inventory by type
+        const productInventory: { [key: string]: { name: string, total: number } } = {}
+        data.productTypes?.forEach((pt: ProductType) => {
+          productInventory[pt.id] = { name: pt.name, total: 0 }
         })
 
         data.transactions.forEach(t => {
-          if (t.flourTypeId && flourInventory[t.flourTypeId]) {
+          if (t.productTypeId && productInventory[t.productTypeId]) {
             const weight = t.weight || 0
-            if (t.type === 'flour_purchase' || t.type === 'flour_in') {
-              flourInventory[t.flourTypeId].total += weight
-            } else if (t.type === 'flour_sale' || t.type === 'flour_out') {
-              flourInventory[t.flourTypeId].total -= weight
+            if (t.type === 'product_purchase' || t.type === 'product_in') {
+              productInventory[t.productTypeId].total += weight
+            } else if (t.type === 'product_sale' || t.type === 'product_out') {
+              productInventory[t.productTypeId].total -= weight
             }
           }
         })
 
-        const totalFlourInventory = Object.values(flourInventory).reduce((sum, f) => sum + f.total, 0)
+        const totalProductInventory = Object.values(productInventory).reduce((sum, f) => sum + f.total, 0)
 
         // Top debtors and creditors
         const customersWithDebt = data.customers
@@ -145,8 +237,8 @@ export default function HomePage() {
                 </p>
               </Card>
               <Card className="p-4 md:p-6 hover:shadow-lg transition-shadow">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("totalFlourInventory")}</h3>
-                <p className="text-2xl md:text-3xl font-bold text-primary">{totalFlourInventory.toLocaleString()}</p>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("totalProductInventory")}</h3>
+                <p className="text-2xl md:text-3xl font-bold text-primary">{totalProductInventory.toLocaleString()}</p>
               </Card>
               <Card className="p-4 md:p-6 hover:shadow-lg transition-shadow">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("activeCustomers")}</h3>
@@ -178,9 +270,9 @@ export default function HomePage() {
 
             {/* Flour Inventory */}
             <Card className="p-4 md:p-6">
-              <h3 className="text-lg font-semibold mb-4">{t("flourInventoryByType")}</h3>
+              <h3 className="text-lg font-semibold mb-4">{t("productInventoryByType")}</h3>
               <div className="space-y-3">
-                {Object.entries(flourInventory).map(([id, { name, total }]) => (
+                {Object.entries(productInventory).map(([id, { name, total }]) => (
                   <div key={id} className="space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium">{name}</span>
@@ -189,7 +281,7 @@ export default function HomePage() {
                     <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${totalFlourInventory > 0 ? (total / totalFlourInventory) * 100 : 0}%` }}
+                        style={{ width: `${totalProductInventory > 0 ? (total / totalProductInventory) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
@@ -236,7 +328,9 @@ export default function HomePage() {
                         <p className="text-xs text-muted-foreground">{new Date(t.date).toLocaleDateString()}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-semibold">${t.amount.toLocaleString()}</p>
+                        <p className="font-semibold">
+                          {(t.amount || 0).toLocaleString()} {data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}
+                        </p>
                         <p className="text-xs text-muted-foreground capitalize">{t.type.replace('_', ' ')}</p>
                       </div>
                     </div>
@@ -267,10 +361,12 @@ export default function HomePage() {
             </Tabs>
           </div>
         )
-      case "flour-types":
-        return <FlourTypesManager />
+      case "bank-accounts":
+        return <BankAccounts data={data} onDataChange={saveData} />
+      case "product-types":
+        return <ProductTypesManager productTypes={productTypes} onProductTypesChange={saveProductTypes} />
       case "transactions":
-        return <TransactionForm data={data} onDataChange={saveData} flourTypes={flourTypes} />
+        return <TransactionForm data={data} onDataChange={saveData} productTypes={productTypes} />
       case "cash-inventory":
         return <CashInventory data={data} />
       case "documents-list":

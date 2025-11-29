@@ -34,7 +34,7 @@ export function Currencies({ data, onDataChange }: CurrenciesProps) {
             onDataChange({ ...data, currencies: updatedCurrencies })
         } else {
             const newCurrency: Currency = {
-                id: Date.now().toString(),
+                id: crypto.randomUUID(),
                 name: formData.name,
                 symbol: formData.symbol,
             }
