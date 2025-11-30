@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import type { AppData, ProductType, BulkTransaction } from "@/types"
 
+import { useLang } from "@/components/language-provider"
+
 // -------------------- Types & Props --------------------
 type SettingsProps = { data: AppData; onDataChange: (d: AppData) => void }
 
@@ -21,6 +23,7 @@ function safeParse<T = any>(key: string): T | null {
 
 // -------------------- Component --------------------
 export default function Settings({ data, onDataChange }: SettingsProps) {
+    const { lang } = useLang()
     const fileRef = useRef<HTMLInputElement | null>(null)
     const [isBackingUp, setIsBackingUp] = useState(false)
 
@@ -97,16 +100,21 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                 let cashDebt = 0
                 let productDebt = 0
 
+                // محاسبه بدهی‌ها فقط از subdocuments
                 transactions.forEach((t) => {
-                    if (t.customerId !== customer.id) return
-                    const amount = t.amount || 0
-                    const w = t.weight || 0
+                    // Skip main documents
+                    if (t.isMainDocument) return
 
-                    if (t.type === "product_purchase" || t.type === "cash_out" || t.type === "expense") cashDebt += amount
-                    else if (t.type === "product_sale" || t.type === "cash_in") cashDebt -= amount
+                    if (t.customerId === customer.id) {
+                        const amount = t.amount || 0
+                        const w = t.weight || 0
 
-                    if (t.type === "product_in") productDebt += w
-                    else if (t.type === "product_out") productDebt -= w
+                        if (t.type === "product_purchase" || t.type === "cash_out" || t.type === "expense" || t.type === "cash_in") cashDebt += amount
+                        else if (t.type === "product_sale") cashDebt -= amount
+
+                        if (t.type === "product_in") productDebt += w
+                        else if (t.type === "product_out") productDebt -= w
+                    }
                 })
 
                 return { ...customer, cashDebt, productDebt }
@@ -423,6 +431,37 @@ ${totalRecords.productTypes || 0} نوع آرد`
         }
     }
 
+    const handleRepairData = () => {
+        if (!confirm(lang === "fa" ? "آیا مطمئن هستید؟ این عملیات داده‌های خراب (زیرسندهای بدون سند اصلی) را حذف می‌کند." : "Are you sure? This will remove orphaned subdocuments.")) return
+
+        const allIds = new Set(data.transactions.map(t => t.id))
+        const cleanTransactions = data.transactions.filter(t => {
+            // Keep main documents
+            if (t.isMainDocument) return true
+            // Keep standalone documents (no parent)
+            if (!t.parentDocumentId) return true
+            // Keep subdocuments ONLY if parent exists
+            return allIds.has(t.parentDocumentId)
+        })
+
+        const removedCount = data.transactions.length - cleanTransactions.length
+
+        if (removedCount > 0) {
+            const newData = { ...data, transactions: cleanTransactions }
+            onDataChange(newData)
+
+            // Force save to localStorage
+            if (typeof window !== "undefined" && window.localStorage) {
+                localStorage.setItem("flour-accounting-data", JSON.stringify(newData))
+            }
+
+            alert(lang === "fa" ? `${removedCount} رکورد خراب حذف شد.` : `${removedCount} corrupted records removed.`)
+            window.location.reload()
+        } else {
+            alert(lang === "fa" ? "داده‌ها سالم هستند." : "Data is clean.")
+        }
+    }
+
     // -------------------- Purge helpers (optional quick tool) --------------------
     const purgeLocalAndResetAppData = async () => {
         const KEYS = [
@@ -532,6 +571,9 @@ ${totalRecords.productTypes || 0} نوع آرد`
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                     📁 بازیابی از فایل
+                </Button>
+                <Button onClick={handleRepairData} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                    🔧 تعمیر داده‌ها
                 </Button>
             </div>
 

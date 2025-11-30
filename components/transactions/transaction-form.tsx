@@ -216,7 +216,59 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           : transaction,
       )
 
-      // اگر تراکنش مرتبط دارد و نوع cash_in یا cash_out است، تراکنش حساب را هم به‌روزرسانی کن
+      // اگر سند اصلی است، زیرسندهای آن را هم به‌روزرسانی کن
+      if (editingTransaction.isMainDocument) {
+        const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
+
+        // پیدا کردن نام حساب
+        let accountName = ""
+        if (formData.accountId === "default-cash-safe") {
+          accountName = lang === "fa" ? "صندوق" : "Cash Box"
+        } else {
+          const bankAccount = data.bankAccounts?.find(b => b.id === formData.accountId)
+          accountName = bankAccount ? `${bankAccount.bankName} - ${bankAccount.accountNumber}` : "Unknown"
+        }
+
+        updatedTransactions = updatedTransactions.map((t) => {
+          // اگر خود سند اصلی است (که قبلاً آپدیت شده، اما اینجا دوباره چک می‌کنیم یا رد می‌شویم)
+          // در واقع map قبلی خود سند اصلی را آپدیت کرده. اینجا باید زیرسندها را پیدا کنیم.
+
+          if (t.parentDocumentId === editingTransaction.id) {
+            // تشخیص اینکه کدام زیرسند است (1 یا 2) بر اساس documentNumber
+            const isSubDoc1 = t.documentNumber?.endsWith("-1")
+            const isSubDoc2 = t.documentNumber?.endsWith("-2")
+
+            if (isSubDoc1) {
+              // زیرسند 1: مشتری
+              return {
+                ...t,
+                type: formData.type,
+                customerId: formData.customerId,
+                amount: formData.type === "cash_in" ? -totalAmount : totalAmount, // مبلغ منفی/مثبت
+                description: formData.description,
+                date: formData.date,
+                currencyId: formData.currencyId,
+                accountId: formData.accountId || "default-cash-safe",
+              }
+            } else if (isSubDoc2) {
+              // زیرسند 2: بانک
+              return {
+                ...t,
+                type: formData.type,
+                customerId: formData.accountId || "default-cash-safe",
+                amount: formData.type === "cash_in" ? totalAmount : -totalAmount, // مبلغ مثبت/منفی
+                description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
+                date: formData.date,
+                currencyId: formData.currencyId,
+                accountId: formData.accountId || "default-cash-safe",
+              }
+            }
+          }
+          return t
+        })
+      }
+
+      // اگر تراکنش مرتبط دارد (روش قدیمی)
       if (editingTransaction.linkedTransactionId && (formData.type === "cash_in" || formData.type === "cash_out")) {
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
         const accountType = formData.type // نوع یکسان
@@ -310,13 +362,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           accountName = bankAccount ? `${bankAccount.bankName} - ${bankAccount.accountNumber}` : "Unknown"
         }
 
-        // سند اصلی
+        // سند اصلی (قرمز)
         const mainDocument: Transaction = {
           id: mainDocId,
           documentNumber: generateDocumentNumber(data.transactions),
           type: formData.type,
           customerId: formData.customerId,
-          amount: totalAmount,
+          amount: formData.type === "cash_in" ? -totalAmount : totalAmount,
           description: `${formData.type === "cash_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "پرداخت به" : "Paid to")} ${customerName} → ${accountName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),
@@ -325,13 +377,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           isMainDocument: true,
         }
 
-        // زیرسند 1
+        // زیرسند 1: دریافت از مشتری (قرمز)
         const subDocument1: Transaction = {
           id: subDoc1Id,
           documentNumber: `${mainDocument.documentNumber}-1`,
           type: formData.type,
           customerId: formData.customerId,
-          amount: totalAmount,
+          amount: formData.type === "cash_in" ? -totalAmount : totalAmount,
           description: formData.description,
           date: formData.date,
           createdAt: getLocalDateTime(),
@@ -340,13 +392,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           parentDocumentId: mainDocId,
         }
 
-        // زیرسند 2
+        // زیرسند 2: واریز به بانک (سبز)
         const subDocument2: Transaction = {
           id: subDoc2Id,
           documentNumber: `${mainDocument.documentNumber}-2`,
           type: formData.type,
           customerId: targetAccountId,
-          amount: totalAmount,
+          amount: formData.type === "cash_in" ? totalAmount : -totalAmount,
           description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,25 +18,12 @@ import { buildLetterheadHTML, type CompanyInfo } from "@/components/print/build-
 import { useLang } from "@/components/language-provider"
 
 
-const getAmountClass = (type: string) => {
-  // نوع‌هایی که باید سبز باشند
-  const green = new Set([
-    "cash_out",      // خروج وجه (دلار)
-    "product_out",     // خروج محصول
-    "product_sale" // فروش محصول
-  ])
-
-  // نوع‌هایی که باید قرمز باشند
-  const red = new Set([
-    "cash_in",    // ورود وجه (دلار)
-    "product_in",   // ورود محصول
-    "product_purchase", // خرید محصول
-    "expense"     // هزینه
-  ])
-
-  if (green.has(type)) return "text-green-600"
-  if (red.has(type)) return "text-red-600"
-  return "" // پیش‌فرض
+const getAmountClass = (amount: number) => {
+  // amount مثبت = سبز (دارایی زیاد یا بدهی کم)
+  // amount منفی = قرمز (دارایی کم یا بدهی زیاد)
+  if (amount > 0) return "text-green-600"
+  if (amount < 0) return "text-red-600"
+  return "" // صفر
 }
 
 interface TransactionListProps {
@@ -251,7 +238,13 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       const transactionToDelete = data.transactions.find(t => t.id === transactionId)
       let transactionsToDelete = [transactionId]
 
-      // اگر تراکنش مرتبط دارد، آن را هم حذف کن
+      // اگر سند اصلی است، تمام زیرسندهای آن را هم حذف کن
+      if (transactionToDelete?.isMainDocument) {
+        const subDocs = data.transactions.filter(t => t.parentDocumentId === transactionId)
+        subDocs.forEach(sub => transactionsToDelete.push(sub.id))
+      }
+
+      // اگر تراکنش مرتبط دارد (روش قدیمی)، آن را هم حذف کن
       if (transactionToDelete?.linkedTransactionId) {
         transactionsToDelete.push(transactionToDelete.linkedTransactionId)
       }
@@ -683,24 +676,44 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
               const typeInfo = getTransactionTypeInfo(transaction)
               const Icon = typeInfo.icon
               const Arrow = typeInfo.arrow
+              const subdocuments = getSubdocuments(transaction.id)
+              const hasSubdocs = subdocuments.length > 0
+              const isExpanded = expandedDocs.has(transaction.id)
 
-
-              return (
-                <TableRow key={transaction.id}>
-                  <TableCell className="text-center font-mono text-[10px] p-2">{transaction.documentNumber || "-"}</TableCell>
+              const renderRow = (trans: Transaction, isSubdoc = false) => (
+                <TableRow key={trans.id} className={isSubdoc ? "bg-muted/30" : ""}>
+                  <TableCell className="text-center font-mono text-[10px] p-2">
+                    <div className="flex items-center justify-center gap-1">
+                      {!isSubdoc && hasSubdocs && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-4 w-4 p-0"
+                          onClick={() => toggleExpand(trans.id)}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-3 w-3" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
+                      {isSubdoc && <span className="text-muted-foreground mr-4">└</span>}
+                      <span>{trans.documentNumber || "-"}</span>
+                    </div>
+                  </TableCell>
                   <TableCell className="text-center p-2">
-                    <Badge className={`${typeInfo.color} text-[9px] px-1 py-0`}>
-                      {typeInfo.label}
+                    <Badge className={`${getTransactionTypeInfo(trans).color} text-[9px] px-1 py-0`}>
+                      {getTransactionTypeInfo(trans).label}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 max-w-[100px]">
                     {(() => {
-                      const customer = data.customers.find((c) => c.id === transaction.customerId)
+                      const customer = data.customers.find((c) => c.id === trans.customerId)
                       let content: React.ReactNode = t("unknown")
                       let text = t("unknown")
 
                       if (customer) {
-                        // ترجمه حساب‌های پیش‌فرض
                         if (customer.id === "default-cash-safe") {
                           content = (
                             <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 whitespace-nowrap">
@@ -720,7 +733,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                           text = customer.name
                         }
                       } else {
-                        const bankAccount = data.bankAccounts?.find((b) => b.id === transaction.customerId)
+                        const bankAccount = data.bankAccounts?.find((b) => b.id === trans.customerId)
                         if (bankAccount) {
                           text = `${bankAccount.bankName} - ${bankAccount.accountHolder}`
                           content = (
@@ -739,55 +752,54 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     })()}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 max-w-[80px]">
-                    <TruncatedTooltip text={getProductTypeName(transaction.productTypeId)}>
-                      {getProductTypeName(transaction.productTypeId)}
+                    <TruncatedTooltip text={getProductTypeName(trans.productTypeId)}>
+                      {getProductTypeName(trans.productTypeId)}
                     </TruncatedTooltip>
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {transaction.quantity ? `${formatNumber(transaction.quantity)}` : "-"}
+                    {trans.quantity ? `${formatNumber(trans.quantity)}` : "-"}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {transaction.weight ? (
+                    {trans.weight ? (
                       displayWeightUnit === "original" ? (
-                        `${formatNumber(transaction.weight)} ${transaction.weightUnit || "ton"}`
+                        `${formatNumber(trans.weight)} ${trans.weightUnit || "ton"}`
                       ) : (
-                        `${formatNumber(convertWeight(transaction.weight, transaction.weightUnit || "ton", displayWeightUnit))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                        `${formatNumber(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
                       )
                     ) : "-"}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {(transaction.unitPrice != null) ? `${formatNumber(transaction.unitPrice)}`
-                      : ((transaction.weight && transaction.amount) ? `${formatNumber(transaction.amount / transaction.weight)}` : "-")}
+                    {(trans.unitPrice != null) ? `${formatNumber(trans.unitPrice)}`
+                      : ((trans.weight && trans.amount) ? `${formatNumber(trans.amount / trans.weight)}` : "-")}
                   </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    <span className={`font-bold ${getAmountClass(transaction.type)}`}>
-                      {formatNumber(transaction.amount)} {data.currencies?.find(c => c.id === transaction.currencyId)?.symbol || "$"}
+                    <span className={`font-bold ${getAmountClass(trans.amount)}`}>
+                      {formatNumber(Math.abs(trans.amount))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
                     </span>
                   </TableCell>
-
                   <TableCell className="text-center text-[10px] p-2">
                     {lang === "fa" ? (
                       <div>
                         <div className="font-medium">
-                          {formatDate(transaction.date || transaction.createdAt || "").persian}
+                          {formatDate(trans.date || trans.createdAt || "").persian}
                         </div>
                         <div className="text-muted-foreground text-[9px]">
-                          {formatDate(transaction.date || transaction.createdAt || "").gregorian}
+                          {formatDate(trans.date || trans.createdAt || "").gregorian}
                         </div>
                       </div>
                     ) : (
                       <div className="font-medium">
-                        {formatDate(transaction.date || transaction.createdAt || "").gregorian}
+                        {formatDate(trans.date || trans.createdAt || "").gregorian}
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[120px] truncate" title={transaction.description}>
-                    {transaction.description}
+                  <TableCell className="text-center text-xs p-2 max-w-[120px] truncate" title={trans.description}>
+                    {trans.description}
                   </TableCell>
                   <TableCell className="text-center p-2">
                     <div className="flex gap-0.5 justify-center">
-                      {onEdit && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(transaction)}>
+                      {onEdit && !isSubdoc && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(trans)}>
                           <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path
                               strokeLinecap="round"
@@ -798,12 +810,21 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                           </svg>
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(transaction.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {!isSubdoc && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(trans.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
+              )
+
+              return (
+                <React.Fragment key={transaction.id}>
+                  {renderRow(transaction, false)}
+                  {isExpanded && subdocuments.map(subdoc => renderRow(subdoc, true))}
+                </React.Fragment>
               )
             })}
           </TableBody>

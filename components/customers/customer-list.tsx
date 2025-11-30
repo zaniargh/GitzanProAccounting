@@ -89,8 +89,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
     let cashDebts = 0
     const productDebts: { [key: string]: number } = {}
 
-    // محاسبه بدهی‌ها از تمام اسناد
+    // محاسبه بدهی‌ها فقط از subdocuments (نه main documents)
     data.transactions.forEach((transaction) => {
+      // Skip main documents - فقط subdocuments را حساب کن
+      if (transaction.isMainDocument) return
+
       if (transaction.customerId === customerId) {
         // Debug log for bank accounts
         if (customerId.includes("bank") || customerId === "default-cash-safe") {
@@ -128,8 +131,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                 (productDebts[transaction.productTypeId] || 0) + amount
             }
             break
-          case "cash_in": // ورود وجه: بدهی نقدی مشتری کم میشود
-            cashDebts -= transaction.amount || 0
+          case "cash_in": // ورود وجه: بدهی نقدی مشتری کم میشود (مقدار منفی است، پس جمع می‌کنیم)
+            if (customerId === transaction.customerId) {
+              console.log("Calc Debt for", customerId, "Type:", transaction.type, "Amount:", transaction.amount, "Current Debt:", cashDebts)
+            }
+            cashDebts += transaction.amount || 0
             break
           case "cash_out": // خروج وجه: بدهی نقدی مشتری زیاد میشود
             cashDebts += transaction.amount || 0
