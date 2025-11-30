@@ -35,6 +35,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
   const [showCashSafe, setShowCashSafe] = useState(true)
   const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const { t, lang } = useLang()
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<"ton" | "kg" | "g" | "mg" | "lb">("ton")
 
   // تابع کمکی برای نمایش نام‌های ترجمه‌شده برای حساب‌های پیش‌فرض
   const getDisplayName = (customer: Customer) => {
@@ -86,7 +87,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
   )
 
   const calculateCustomerDebts = (customerId: string) => {
-    let cashDebts = 0
+    const cashDebts: { [currencyId: string]: number } = {}
     const productDebts: { [key: string]: number } = {}
 
     // محاسبه بدهی‌ها فقط از subdocuments (نه main documents)
@@ -100,48 +101,83 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
           console.log("Found transaction for account:", customerId, transaction)
         }
 
+        const currencyId = transaction.currencyId || "default" // ارز پیش‌فرض اگر نبود
+        const currentDebt = cashDebts[currencyId] || 0
+
         switch (transaction.type) {
-          case "product_purchase": // خرید محصول: مشتری بدهکار محصول، من بدهکار پول
+          case "product_purchase":
             if (transaction.productTypeId) {
-              const amount = transaction.quantity || transaction.weight || 0
+              let amount = transaction.quantity || transaction.weight || 0
+              if (transaction.weight) {
+                switch (transaction.weightUnit) {
+                  case "mg": amount /= 1_000_000_000; break;
+                  case "g": amount /= 1_000_000; break;
+                  case "kg": amount /= 1_000; break;
+                  case "lb": amount /= 2204.62; break;
+                }
+              }
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) + amount
             }
-            cashDebts -= transaction.amount || 0
+            cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
             break
-          case "product_sale": // فروش محصول: من بدهکار محصول، مشتری بدهکار پول
+          case "product_sale":
             if (transaction.productTypeId) {
-              const amount = transaction.quantity || transaction.weight || 0
+              let amount = transaction.quantity || transaction.weight || 0
+              if (transaction.weight) {
+                switch (transaction.weightUnit) {
+                  case "mg": amount /= 1_000_000_000; break;
+                  case "g": amount /= 1_000_000; break;
+                  case "kg": amount /= 1_000; break;
+                  case "lb": amount /= 2204.62; break;
+                }
+              }
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) - amount
             }
-            cashDebts += transaction.amount || 0
+            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
             break
-          case "product_in": // ورود محصول: بدهی محصولی مشتری کم میشود
+          case "product_in":
             if (transaction.productTypeId) {
-              const amount = transaction.quantity || transaction.weight || 0
+              let amount = transaction.quantity || transaction.weight || 0
+              if (transaction.weight) {
+                switch (transaction.weightUnit) {
+                  case "mg": amount /= 1_000_000_000; break;
+                  case "g": amount /= 1_000_000; break;
+                  case "kg": amount /= 1_000; break;
+                  case "lb": amount /= 2204.62; break;
+                }
+              }
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) - amount
             }
             break
-          case "product_out": // خروج محصول: بدهی محصولی مشتری زیاد میشود
+          case "product_out":
             if (transaction.productTypeId) {
-              const amount = transaction.quantity || transaction.weight || 0
+              let amount = transaction.quantity || transaction.weight || 0
+              if (transaction.weight) {
+                switch (transaction.weightUnit) {
+                  case "mg": amount /= 1_000_000_000; break;
+                  case "g": amount /= 1_000_000; break;
+                  case "kg": amount /= 1_000; break;
+                  case "lb": amount /= 2204.62; break;
+                }
+              }
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) + amount
             }
             break
           case "cash_in": // ورود وجه: بدهی نقدی مشتری کم میشود (مقدار منفی است، پس جمع می‌کنیم)
             if (customerId === transaction.customerId) {
-              console.log("Calc Debt for", customerId, "Type:", transaction.type, "Amount:", transaction.amount, "Current Debt:", cashDebts)
+              console.log("Calc Debt for", customerId, "Type:", transaction.type, "Amount:", transaction.amount, "Current Debt:", currentDebt)
             }
-            cashDebts += transaction.amount || 0
+            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
             break
           case "cash_out": // خروج وجه: بدهی نقدی مشتری زیاد میشود
-            cashDebts += transaction.amount || 0
+            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
             break
           case "expense": // هزینه: من بدهکار آن حساب می‌شوم
-            cashDebts -= transaction.amount || 0
+            cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
             break
         }
       }
@@ -183,8 +219,9 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
           bValue = getGroupName(b.groupId).toLowerCase()
           break
         case "cashDebts":
-          aValue = a.cashDebts
-          bValue = b.cashDebts
+          const getDebtSum = (debts: { [key: string]: number }) => Object.values(debts).reduce((sum, val) => sum + val, 0)
+          aValue = getDebtSum(a.cashDebts)
+          bValue = getDebtSum(b.cashDebts)
           break
         case "productDebts":
           // برای محصول، مجموع مطلق بدهی‌ها را در نظر می‌گیریم
@@ -449,11 +486,10 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
           <thead>
             <tr>
               <th style="width: 5%">ردیف</th>
-              <th style="width: 20%">نام مشتری</th>
-              <th style="width: 12%">تلفن</th>
-              <th style="width: 12%">گروه</th>
-              <th style="width: 20%">بدهی نقدی (دلار)</th>
-              <th style="width: 27%">بدهی محصول (تن)</th>
+              <th style="width: 25%">نام مشتری</th>
+              <th style="width: 15%">تلفن</th>
+              <th style="width: 15%">گروه</th>
+              <th style="width: 40%">وضعیت حساب</th>
             </tr>
           </thead>
           <tbody>
@@ -465,23 +501,56 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                 <td class="customer-name">${customer.name}</td>
                 <td>${customer.phone}</td>
                 <td>${getGroupName(customer.groupId)}</td>
-                <td class="${customer.cashDebts > 0 ? "debt-positive" : customer.cashDebts < 0 ? "debt-negative" : ""}">
-                  ${customer.cashDebts > 0 ? "+" : ""}${formatNumber(Math.abs(customer.cashDebts))}
-                  ${customer.cashDebts > 0 ? " لایه تی " : customer.cashDebts < 0 ? "هه یه تی" : ""}
-                </td>
-                <td class="product-debts">
-                  ${Object.entries(customer.productDebts)
-              .map(([productTypeId, amount]) =>
-                amount !== 0
-                  ? `
+                <td class="debt-cell">
+                  ${Object.entries(customer.cashDebts).map(([currencyId, amount]) => {
+            if (amount === 0) return ""
+            const currency = data.currencies?.find(c => c.id === currencyId)
+            const symbol = currency?.symbol || "$"
+            return `
                       <div class="${amount > 0 ? "debt-positive" : "debt-negative"}">
-                        ${getProductTypeName(productTypeId)}: ${amount > 0 ? "+" : ""}${formatNumber(Math.abs(amount))} تن ${amount > 0 ? "لایه تی" : "هه یه تی"}
+                        ${formatNumber(Math.abs(amount))} ${symbol} ${amount > 0 ? "لایه تی" : "هه یه تی"}
                       </div>
                     `
-                  : "",
-              )
+          }).join("")}
+                  
+                  ${Object.entries(customer.productDebts)
+              .map(([productTypeId, amount]) => {
+                if (amount === 0) return ""
+                const productType = productTypes.find(pt => pt.id === productTypeId)
+                const isQuantityBased = productType?.measurementType === "quantity"
+
+                let displayAmount = Math.abs(amount)
+                let unit = ""
+
+                if (isQuantityBased) {
+                  unit = lang === "fa" ? "عدد" : "Qty"
+                } else {
+                  if (weightDisplayUnit === "mg") {
+                    displayAmount *= 1_000_000_000
+                    unit = lang === "fa" ? "میلی‌گرم" : "mg"
+                  } else if (weightDisplayUnit === "g") {
+                    displayAmount *= 1_000_000
+                    unit = lang === "fa" ? "گرم" : "g"
+                  } else if (weightDisplayUnit === "kg") {
+                    displayAmount *= 1_000
+                    unit = lang === "fa" ? "کیلوگرم" : "Kg"
+                  } else if (weightDisplayUnit === "lb") {
+                    displayAmount *= 2204.62
+                    unit = lang === "fa" ? "پوند" : "lb"
+                  } else {
+                    unit = lang === "fa" ? "تن" : "Tons"
+                  }
+                }
+
+                return `
+                      <div class="${amount > 0 ? "debt-positive" : "debt-negative"}">
+                        ${getProductTypeName(productTypeId)}: ${formatNumber(displayAmount)} ${unit} ${amount > 0 ? "لایه تی" : "هه یه تی"}
+                      </div>
+                    `
+              })
               .join("")}
-                  ${Object.values(customer.productDebts).every((amount) => amount === 0) ? "بدون بدهی محصول" : ""}
+
+                  ${Object.values(customer.cashDebts).every(a => a === 0) && Object.values(customer.productDebts).every(a => a === 0) ? "-" : ""}
                 </td>
               </tr>
             `,
@@ -511,8 +580,8 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center gap-4">
-        <div className="flex-1 max-w-sm">
+      <div className="flex justify-between items-center gap-4 flex-wrap">
+        <div className="flex-1 max-w-sm min-w-[200px]">
           <div className="relative">
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -523,7 +592,22 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
             />
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Label className="text-sm whitespace-nowrap">{lang === "fa" ? "واحد وزن:" : "Weight Unit:"}</Label>
+            <Select value={weightDisplayUnit} onValueChange={(v) => setWeightDisplayUnit(v as any)}>
+              <SelectTrigger className="w-[100px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ton">{lang === "fa" ? "تن" : "Ton"}</SelectItem>
+                <SelectItem value="kg">{lang === "fa" ? "کیلوگرم" : "Kg"}</SelectItem>
+                <SelectItem value="g">{lang === "fa" ? "گرم" : "g"}</SelectItem>
+                <SelectItem value="mg">{lang === "fa" ? "میلی‌گرم" : "mg"}</SelectItem>
+                <SelectItem value="lb">{lang === "fa" ? "پوند" : "lb"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center space-x-2 rtl:space-x-reverse">
             <Checkbox
               id="showCashSafe"
@@ -545,259 +629,295 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
             </Label>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePrint} disabled={finalFilteredCustomers.length === 0}>
-            <Printer className="h-4 w-4 ml-2" />
-            {t("printList")}
-          </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={openAddDialog} disabled={data.customerGroups.length === 0}>
-                <Plus className="h-4 w-4 ml-2" />
-                {t("newCustomer")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent dir={lang === "fa" ? "rtl" : "ltr"}>
-              <DialogHeader>
-                <DialogTitle>{editingCustomer ? t("editCustomer") : t("newCustomer")}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">{t("customerName")}</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone">{t("phoneNumber")}</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="customerCode">{lang === "fa" ? "کد مشتری" : "Customer Code"}</Label>
-                  <Input
-                    id="customerCode"
-                    value={formData.customerCode}
-                    onChange={(e) => {
-                      setFormData({ ...formData, customerCode: e.target.value })
-                      setCustomerCodeError("")
-                    }}
-                    required
-                    placeholder={lang === "fa" ? "کد یکتا برای مشتری" : "Unique code for customer"}
-                  />
-                  {customerCodeError && (
-                    <p className="text-xs text-red-600 mt-1">{customerCodeError}</p>
-                  )}
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={handlePrint} disabled={finalFilteredCustomers.length === 0}>
+          <Printer className="h-4 w-4 ml-2" />
+          {t("printList")}
+        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={openAddDialog} disabled={data.customerGroups.length === 0}>
+              <Plus className="h-4 w-4 ml-2" />
+              {t("newCustomer")}
+            </Button>
+          </DialogTrigger>
+          <DialogContent dir={lang === "fa" ? "rtl" : "ltr"}>
+            <DialogHeader>
+              <DialogTitle>{editingCustomer ? t("editCustomer") : t("newCustomer")}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="name">{t("customerName")}</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="phone">{t("phoneNumber")}</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="customerCode">{lang === "fa" ? "کد مشتری" : "Customer Code"}</Label>
+                <Input
+                  id="customerCode"
+                  value={formData.customerCode}
+                  onChange={(e) => {
+                    setFormData({ ...formData, customerCode: e.target.value })
+                    setCustomerCodeError("")
+                  }}
+                  required
+                  placeholder={lang === "fa" ? "کد یکتا برای مشتری" : "Unique code for customer"}
+                />
+                {customerCodeError && (
+                  <p className="text-xs text-red-600 mt-1">{customerCodeError}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "fa"
+                    ? "کد مشتری باید یکتا باشد. سیستم به صورت خودکار شماره بعدی را پیشنهاد می‌دهد."
+                    : "Customer code must be unique. System auto-suggests the next number."}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="group">{t("group")}</Label>
+                <Select
+                  value={formData.groupId}
+                  onValueChange={(value) => setFormData({ ...formData, groupId: value })}
+                  disabled={editingCustomer?.isProtected}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("selectGroup")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {data.customerGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.id === "main-group" ? (lang === "fa" ? "اصلی" : "Main") : group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {editingCustomer?.isProtected && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {lang === "fa"
-                      ? "کد مشتری باید یکتا باشد. سیستم به صورت خودکار شماره بعدی را پیشنهاد می‌دهد."
-                      : "Customer code must be unique. System auto-suggests the next number."}
+                    {t("protectedAccountGroupFixed")}
                   </p>
-                </div>
-                <div>
-                  <Label htmlFor="group">{t("group")}</Label>
-                  <Select
-                    value={formData.groupId}
-                    onValueChange={(value) => setFormData({ ...formData, groupId: value })}
-                    disabled={editingCustomer?.isProtected}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("selectGroup")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {data.customerGroups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>
-                          {group.id === "main-group" ? (lang === "fa" ? "اصلی" : "Main") : group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {editingCustomer?.isProtected && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t("protectedAccountGroupFixed")}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit">{editingCustomer ? t("edit") : t("create")}</Button>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    {t("cancel")}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit">{editingCustomer ? t("edit") : t("create")}</Button>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  {t("cancel")}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {data.customerGroups.length === 0 && (
-        <Card className="p-6 text-center">
-          <p className="text-muted-foreground">{t("defineGroupFirst")}</p>
-        </Card>
-      )}
 
-      {data.customerGroups.length > 0 && (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableHeader field="name">{lang === "fa" ? "کد" : "Code"}</SortableHeader>
-                <SortableHeader field="name">{t("name")}</SortableHeader>
-                <SortableHeader field="phone">{t("phone")}</SortableHeader>
-                <SortableHeader field="group">{t("group")}</SortableHeader>
-                <SortableHeader field="cashDebts">{t("financial")}</SortableHeader>
-                <SortableHeader field="productDebts">{t("product")}</SortableHeader>
-                <TableHead>{t("actions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {finalFilteredCustomers.map((customer) => (
-                <TableRow key={customer.id} className={customer.isProtected ? "bg-orange-50" : ""}>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
-                    {customer.customerCode || "-"}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      {getDisplayName(customer)}
-                      {customer.isProtected && (
-                        <div title="مشتری محافظت شده - غیرقابل حذف">
-                          <Shield className="h-4 w-4 text-orange-600" />
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{customer.phone}</TableCell>
-                  <TableCell>{getGroupName(customer.groupId)}</TableCell>
-                  <TableCell>
-                    <span
-                      className={
-                        customer.cashDebts > 0
-                          ? "text-green-600 font-medium"
-                          : customer.cashDebts < 0
-                            ? "text-red-600 font-medium"
-                            : "text-muted-foreground"
-                      }
-                    >
-                      {formatNumber(Math.abs(customer.cashDebts))} {customer.cashDebts > 0 ? t("debtor") : customer.cashDebts < 0 ? t("creditor") : ""}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      {Object.entries(customer.productDebts).map(
-                        ([productTypeId, amount]) => {
+      {
+        data.customerGroups.length === 0 && (
+          <Card className="p-6 text-center">
+            <p className="text-muted-foreground">{t("defineGroupFirst")}</p>
+          </Card>
+        )
+      }
+
+      {
+        data.customerGroups.length > 0 && (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortableHeader field="name">{lang === "fa" ? "کد" : "Code"}</SortableHeader>
+                  <SortableHeader field="name">{t("name")}</SortableHeader>
+                  <SortableHeader field="phone">{t("phone")}</SortableHeader>
+                  <SortableHeader field="group">{t("group")}</SortableHeader>
+                  <SortableHeader field="cashDebts">{t("balance")}</SortableHeader>
+                  <TableHead>{t("actions")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {finalFilteredCustomers.map((customer) => (
+                  <TableRow key={customer.id} className={customer.isProtected ? "bg-orange-50" : ""}>
+                    <TableCell className="font-mono text-sm text-muted-foreground">
+                      {customer.customerCode || "-"}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {getDisplayName(customer)}
+                        {customer.isProtected && (
+                          <div title="مشتری محافظت شده - غیرقابل حذف">
+                            <Shield className="h-4 w-4 text-orange-600" />
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{customer.phone}</TableCell>
+                    <TableCell>{getGroupName(customer.groupId)}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {/* Cash Debts */}
+                        {Object.entries(customer.cashDebts).map(([currencyId, amount]) => {
                           if (amount === 0) return null
-                          const productType = productTypes.find(pt => pt.id === productTypeId)
-                          const isQuantityBased = productType?.measurementType === "quantity"
-                          const unit = isQuantityBased
-                            ? (lang === "fa" ? "عدد" : "unit")
-                            : (lang === "fa" ? "تن" : "ton")
+                          const currency = data.currencies?.find(c => c.id === currencyId)
+                          const symbol = currency?.symbol || "$"
 
                           return (
-                            <div
-                              key={productTypeId}
-                              className={`${amount > 0 ? "text-green-600" : "text-red-600"} font-medium text-sm`}
-                            >
-                              <span className="font-normal text-muted-foreground">
-                                {getProductTypeName(productTypeId)}:
-                              </span>
-                              <br />
-                              {formatNumber(Math.abs(amount))} {unit} {amount > 0 ? t("debtor") : t("creditor")}
+                            <div key={currencyId} className={
+                              amount > 0
+                                ? "text-green-600 font-medium"
+                                : amount < 0
+                                  ? "text-red-600 font-medium"
+                                  : "text-muted-foreground"
+                            }>
+                              {formatNumber(Math.abs(amount))} {symbol} {amount > 0 ? t("debtor") : amount < 0 ? t("creditor") : ""}
                             </div>
                           )
-                        },
-                      )}
-                      {Object.values(customer.productDebts).every((amount) => amount === 0) && (
-                        <span className="text-muted-foreground text-sm">{t("noProductDebt")}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleEdit(customer)}
-                        title="ویرایش نام و اطلاعات مشتری"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(customer.id)}
-                        disabled={customer.isProtected}
-                        title={customer.isProtected ? "این مشتری قابل حذف نیست" : "حذف مشتری"}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {finalFilteredCustomers.length === 0 && (
-            <div className="p-8 text-center">
-              <p className="text-muted-foreground">
-                {searchTerm ? "مشتری مورد نظر یافت نشد" : "هیچ مشتری تعریف نشده است"}
-              </p>
-            </div>
-          )}
-        </Card>
-      )}
+                        })}
 
-      {/* Bank Accounts Section */}
-      {(data.bankAccounts && data.bankAccounts.length > 0) && (
-        <Card className="mt-6">
-          <div className="p-4 border-b">
-            <h3 className="text-lg font-semibold">{t("bankAccounts")}</h3>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("bankName")}</TableHead>
-                <TableHead>{t("accountNumber")}</TableHead>
-                <TableHead>{t("accountHolder")}</TableHead>
-                <TableHead>{t("currency")}</TableHead>
-                <TableHead>{t("initialBalance")}</TableHead>
-                <TableHead>{t("currentBalance")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.bankAccounts.map((account) => {
-                const currency = data.currencies.find(c => c.id === account.currencyId)
+                        {/* Product Debts */}
+                        {Object.entries(customer.productDebts).map(
+                          ([productTypeId, amount]) => {
+                            if (amount === 0) return null
+                            const productType = productTypes.find(pt => pt.id === productTypeId)
+                            const isQuantityBased = productType?.measurementType === "quantity"
 
-                // محاسبه موجودی فعلی بر اساس تراکنش‌ها
-                const accountDebts = calculateCustomerDebts(account.id)
-                const currentBalance = (account.initialBalance || 0) + accountDebts.cashDebts
+                            let displayAmount = Math.abs(amount)
+                            let unit = ""
 
-                return (
-                  <TableRow key={account.id}>
-                    <TableCell className="font-medium">{account.bankName}</TableCell>
-                    <TableCell>{account.accountNumber}</TableCell>
-                    <TableCell>{account.accountHolder}</TableCell>
-                    <TableCell>{currency?.name} ({currency?.symbol})</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {(account.initialBalance || 0).toLocaleString()} {currency?.symbol || ""}
+                            if (isQuantityBased) {
+                              unit = lang === "fa" ? "عدد" : "Qty"
+                            } else {
+                              // Weight based (amount is in Tons)
+                              if (weightDisplayUnit === "mg") {
+                                displayAmount *= 1_000_000_000
+                                unit = lang === "fa" ? "میلی‌گرم" : "mg"
+                              } else if (weightDisplayUnit === "g") {
+                                displayAmount *= 1_000_000
+                                unit = lang === "fa" ? "گرم" : "g"
+                              } else if (weightDisplayUnit === "kg") {
+                                displayAmount *= 1_000
+                                unit = lang === "fa" ? "کیلوگرم" : "Kg"
+                              } else if (weightDisplayUnit === "lb") {
+                                displayAmount *= 2204.62
+                                unit = lang === "fa" ? "پوند" : "lb"
+                              } else {
+                                unit = lang === "fa" ? "تن" : "Tons"
+                              }
+                            }
+
+                            return (
+                              <div key={productTypeId} className={
+                                amount > 0
+                                  ? "text-green-600 font-medium"
+                                  : amount < 0
+                                    ? "text-red-600 font-medium"
+                                    : "text-muted-foreground"
+                              }>
+                                {getProductTypeName(productTypeId)}: {formatNumber(displayAmount)} {unit} {amount > 0 ? (lang === "fa" ? "بدهکار" : "Dr") : (lang === "fa" ? "بستانکار" : "Cr")}
+                              </div>
+                            )
+                          }
+                        )}
+
+                        {Object.values(customer.cashDebts).every(a => a === 0) && Object.values(customer.productDebts).every(a => a === 0) && (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
                     </TableCell>
-                    <TableCell className={currentBalance >= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
-                      {currentBalance.toLocaleString()} {currency?.symbol || ""}
-                      {currentBalance >= 0 ? " " + t("debtor") : " " + t("creditor")}
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEdit(customer)}
+                          title="ویرایش نام و اطلاعات مشتری"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDelete(customer.id)}
+                          disabled={customer.isProtected}
+                          title={customer.isProtected ? "این مشتری قابل حذف نیست" : "حذف مشتری"}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </div>
+                ))}
+              </TableBody>
+            </Table>
+            {finalFilteredCustomers.length === 0 && (
+              <div className="p-8 text-center">
+                <p className="text-muted-foreground">
+                  {searchTerm ? "مشتری مورد نظر یافت نشد" : "هیچ مشتری تعریف نشده است"}
+                </p>
+              </div>
+            )}
+          </Card>
+        )
+      }
+
+      {/* Bank Accounts Section */}
+      {
+        (data.bankAccounts && data.bankAccounts.length > 0) && (
+          <Card className="mt-6">
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold">{t("bankAccounts")}</h3>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("bankName")}</TableHead>
+                  <TableHead>{t("accountNumber")}</TableHead>
+                  <TableHead>{t("accountHolder")}</TableHead>
+                  <TableHead>{t("currency")}</TableHead>
+                  <TableHead>{t("initialBalance")}</TableHead>
+                  <TableHead>{t("currentBalance")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.bankAccounts.map((account) => {
+                  const currency = data.currencies.find(c => c.id === account.currencyId)
+
+                  // محاسبه موجودی فعلی بر اساس تراکنش‌ها
+                  // محاسبه موجودی فعلی بر اساس تراکنش‌ها
+                  const accountDebts = calculateCustomerDebts(account.id)
+                  const currencyId = account.currencyId || "default"
+                  const currentBalance = (account.initialBalance || 0) + (accountDebts.cashDebts[currencyId] || 0)
+
+                  return (
+                    <TableRow key={account.id}>
+                      <TableCell className="font-medium">{account.bankName}</TableCell>
+                      <TableCell>{account.accountNumber}</TableCell>
+                      <TableCell>{account.accountHolder}</TableCell>
+                      <TableCell>{currency?.name} ({currency?.symbol})</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {(account.initialBalance || 0).toLocaleString()} {currency?.symbol || ""}
+                      </TableCell>
+                      <TableCell className={currentBalance >= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+                        {currentBalance.toLocaleString()} {currency?.symbol || ""}
+                        {currentBalance >= 0 ? " " + t("debtor") : " " + t("creditor")}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )
+      }
+    </div >
   )
 }
