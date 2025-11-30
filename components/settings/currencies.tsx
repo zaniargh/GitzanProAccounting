@@ -37,6 +37,7 @@ export function Currencies({ data, onDataChange }: CurrenciesProps) {
                 id: crypto.randomUUID(),
                 name: formData.name,
                 symbol: formData.symbol,
+                createdAt: new Date().toISOString(),
             }
             onDataChange({
                 ...data,

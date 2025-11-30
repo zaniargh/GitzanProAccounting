@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Package, DollarSign } from "lucide-react"
 import type { Transaction, AppData, TransactionType } from "@/types"
@@ -109,6 +110,21 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     e.preventDefault()
     setValidationError("")
 
+    // Validation: Check if bank account currency matches selected currency
+    if (formData.accountId && !formData.accountId.startsWith("default-")) {
+      const bankAccount = data.bankAccounts?.find((acc) => acc.id === formData.accountId)
+      if (bankAccount && bankAccount.currencyId !== formData.currencyId) {
+        const accountCurrency = data.currencies?.find((c) => c.id === bankAccount.currencyId)?.name || "Unknown"
+        const selectedCurrency = data.currencies?.find((c) => c.id === formData.currencyId)?.name || "Unknown"
+        setValidationError(
+          t("currencyMismatchError")
+            .replace("{accountCurrency}", accountCurrency)
+            .replace("{selectedCurrency}", selectedCurrency)
+        )
+        return
+      }
+    }
+
     // Validation: Customer must be selected
     if (!formData.customerId) {
       setValidationError(t("selectCustomerRequired"))
@@ -117,6 +133,28 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
 
     // Validation for product_in and product_out: only one of quantity or weight should be filled
     if (formData.type === "product_in" || formData.type === "product_out") {
+      const hasQuantity = formData.quantity && formData.quantity.trim() !== ""
+      const hasWeight = formData.weight && formData.weight.trim() !== ""
+
+      if (!hasQuantity && !hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+
+      if (hasQuantity && hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+    }
+
+    // Validation: Product Type must be selected for product transactions
+    if (isFlourTransaction && !formData.productTypeId) {
+      setValidationError(t("productTypeRequired"))
+      return
+    }
+
+    // Validation for product_purchase and product_sale
+    if (formData.type === "product_purchase" || formData.type === "product_sale") {
       const hasQuantity = formData.quantity && formData.quantity.trim() !== ""
       const hasWeight = formData.weight && formData.weight.trim() !== ""
 
@@ -181,15 +219,24 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       // اگر تراکنش مرتبط دارد و نوع cash_in یا cash_out است، تراکنش حساب را هم به‌روزرسانی کن
       if (editingTransaction.linkedTransactionId && (formData.type === "cash_in" || formData.type === "cash_out")) {
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
-        const accountType = formData.type === "cash_in" ? "cash_out" : "cash_in"
+        const accountType = formData.type // نوع یکسان
+
+        // پیدا کردن نام حساب
+        let accountName = ""
+        if (formData.accountId === "default-cash-safe") {
+          accountName = lang === "fa" ? "صندوق" : "Cash Box"
+        } else {
+          const bankAccount = data.bankAccounts?.find(b => b.id === formData.accountId)
+          accountName = bankAccount ? `${bankAccount.bankName} - ${bankAccount.accountNumber}` : "Unknown"
+        }
 
         updatedTransactions = updatedTransactions.map((transaction) =>
           transaction.id === editingTransaction.linkedTransactionId
             ? {
               ...transaction,
-              type: accountType, // نوع معکوس
+              type: accountType, // نوع یکسان
               amount: totalAmount, // مبلغ جدید
-              description: `${formData.type === "cash_in" ? "دریافت از" : "پرداخت به"} ${customerName}`,
+              description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
               date: formData.date, // تاریخ جدید
               currencyId: formData.currencyId, // ارز جدید
               customerId: formData.accountId, // حساب انتخابی
@@ -202,17 +249,16 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       // اگر تراکنش مرتبط دارد و نوع product_in یا product_out است، تراکنش انبار را هم به‌روزرسانی کن
       if (editingTransaction.linkedTransactionId && (formData.type === "product_in" || formData.type === "product_out")) {
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
-        const warehouseType = formData.type === "product_in" ? "product_out" : "product_in"
 
         updatedTransactions = updatedTransactions.map((transaction) =>
           transaction.id === editingTransaction.linkedTransactionId
             ? {
               ...transaction,
-              type: warehouseType, // نوع معکوس
+              type: formData.type, // نوع یکسان
               weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
               quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
               productTypeId: formData.productTypeId,
-              description: `${formData.type === "product_in" ? "دریافت از" : "ارسال به"} ${customerName}`,
+              description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
               date: formData.date, // تاریخ جدید
               weightUnit: formData.weightUnit,
             }
@@ -238,71 +284,103 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
         productTypeId: formData.productTypeId || undefined,
         description: formData.description,
         date: formData.date,
-        createdAt: getLocalDateTime(), // ثبت ساعت دقیق بغداد
+        createdAt: getLocalDateTime(),
         currencyId: formData.currencyId,
         weightUnit: formData.weightUnit,
         accountId: formData.accountId,
       }
 
-      let newTransactions = [newTransaction]
+      let newTransactions = []
 
-      // اگر نوع تراکنش cash_in یا cash_out است، یک تراکنش مرتبط برای حساب انتخابی ایجاد کن
+      // اگر نوع تراکنش cash_in یا cash_out است، یک سند اصلی با دو زیرسند ایجاد کن
       if (formData.type === "cash_in" || formData.type === "cash_out") {
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
-        const accountTransactionId = crypto.randomUUID()
+        const mainDocId = crypto.randomUUID()
+        const subDoc1Id = crypto.randomUUID()
+        const subDoc2Id = crypto.randomUUID()
 
-        // نوع معکوس: اگر از مشتری cash_in گرفتیم، حساب cash_out می‌کند (پول پرداخت می‌کند به کاربر)
-        const accountType = formData.type === "cash_in" ? "cash_out" : "cash_in"
+        const targetAccountId = formData.accountId || "default-cash-safe"
 
-        const accountTransaction: Transaction = {
-          id: accountTransactionId,
-          documentNumber: generateDocumentNumber([...data.transactions, newTransaction]),
-          type: accountType, // نوع معکوس
-          customerId: formData.accountId, // حساب انتخابی (Cash Safe یا Bank Account)
+        // پیدا کردن نام حساب
+        let accountName = ""
+        if (targetAccountId === "default-cash-safe") {
+          accountName = lang === "fa" ? "صندوق" : "Cash Box"
+        } else {
+          const bankAccount = data.bankAccounts?.find(b => b.id === targetAccountId)
+          accountName = bankAccount ? `${bankAccount.bankName} - ${bankAccount.accountNumber}` : "Unknown"
+        }
+
+        // سند اصلی
+        const mainDocument: Transaction = {
+          id: mainDocId,
+          documentNumber: generateDocumentNumber(data.transactions),
+          type: formData.type,
+          customerId: formData.customerId,
           amount: totalAmount,
-          description: `${formData.type === "cash_in" ? "دریافت از" : "پرداخت به"} ${customerName}`,
+          description: `${formData.type === "cash_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "پرداخت به" : "Paid to")} ${customerName} → ${accountName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),
           currencyId: formData.currencyId,
-          linkedTransactionId: newTransaction.id, // لینک به تراکنش اصلی
-          accountId: formData.accountId,
+          accountId: targetAccountId,
+          isMainDocument: true,
         }
 
-        // لینک تراکنش اصلی به تراکنش حساب
-        newTransaction.linkedTransactionId = accountTransactionId
-        newTransaction.accountId = formData.accountId // ذخیره حساب استفاده شده
+        // زیرسند 1
+        const subDocument1: Transaction = {
+          id: subDoc1Id,
+          documentNumber: `${mainDocument.documentNumber}-1`,
+          type: formData.type,
+          customerId: formData.customerId,
+          amount: totalAmount,
+          description: formData.description,
+          date: formData.date,
+          createdAt: getLocalDateTime(),
+          currencyId: formData.currencyId,
+          accountId: targetAccountId,
+          parentDocumentId: mainDocId,
+        }
 
-        newTransactions.push(accountTransaction)
-      }
+        // زیرسند 2
+        const subDocument2: Transaction = {
+          id: subDoc2Id,
+          documentNumber: `${mainDocument.documentNumber}-2`,
+          type: formData.type,
+          customerId: targetAccountId,
+          amount: totalAmount,
+          description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
+          date: formData.date,
+          createdAt: getLocalDateTime(),
+          currencyId: formData.currencyId,
+          accountId: targetAccountId,
+          parentDocumentId: mainDocId,
+        }
 
-      // اگر نوع تراکنش product_in یا product_out است، یک تراکنش مرتبط برای انبار ایجاد کن
-      if (formData.type === "product_in" || formData.type === "product_out") {
+        newTransactions = [mainDocument, subDocument1, subDocument2]
+      } else if (formData.type === "product_in" || formData.type === "product_out") {
+        // برای محصولات، همان روال قبلی warehouse
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
         const warehouseTransactionId = crypto.randomUUID()
-
-        // نوع معکوس: اگر از مشتری product_in گرفتیم، انبار product_out می‌کند (کالا تحویل می‌دهد)
-        const warehouseType = formData.type === "product_in" ? "product_out" : "product_in"
 
         const warehouseTransaction: Transaction = {
           id: warehouseTransactionId,
           documentNumber: generateDocumentNumber([...data.transactions, newTransaction]),
-          type: warehouseType, // نوع معکوس
-          customerId: "default-warehouse", // انبار
-          amount: 0, // برای تراکنش‌های محصول مبلغ صفر است
+          type: formData.type,
+          customerId: "default-warehouse",
+          amount: 0,
           weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
           quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
           productTypeId: formData.productTypeId,
-          description: `${formData.type === "product_in" ? "دریافت از" : "ارسال به"} ${customerName}`,
+          description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),
           weightUnit: formData.weightUnit,
-          linkedTransactionId: newTransaction.id, // لینک به تراکنش اصلی
+          linkedTransactionId: newTransaction.id,
         }
 
-        // لینک تراکنش اصلی به تراکنش انبار
         newTransaction.linkedTransactionId = warehouseTransactionId
-
-        newTransactions.push(warehouseTransaction)
+        newTransactions = [newTransaction, warehouseTransaction]
+      } else {
+        newTransactions = [newTransaction]
       }
 
       onDataChange({
@@ -470,107 +548,107 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           {transactionTypes.map((type) => (
             <TabsContent key={type.value} value={type.value}>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="customer">{formData.type === "expense" ? t("expenseType") : t("customer")}</Label>
-                    <Select
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  {/* Customer Selection - Spans 4 columns */}
+                  <div className="md:col-span-4">
+                    <Label htmlFor="customer" className="text-xs mb-1 block">{formData.type === "expense" ? t("expenseType") : t("customer")}</Label>
+                    <SearchableSelect
                       value={formData.customerId}
                       onValueChange={(value) => setFormData({ ...formData, customerId: value })}
-                    >
-                      <SelectTrigger className={lang === "fa" ? "text-right" : "text-left"} dir={lang === "fa" ? "rtl" : "ltr"}>
-                        <SelectValue placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getFilteredCustomers().map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id}>
-                            {customer.name}
-                            {customer.phone !== "هزینه" && ` - ${customer.phone}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={getFilteredCustomers().map((customer) => {
+                        let displayName = customer.name
+                        if (customer.id === "default-cash-safe") {
+                          displayName = lang === "fa" ? "صندوق" : "Cash Box"
+                        } else if (customer.id === "default-warehouse") {
+                          displayName = lang === "fa" ? "موجودی" : "Inventory"
+                        }
+                        const code = customer.customerCode ? `${customer.customerCode} - ` : ""
+                        const label = customer.phone !== "هزینه" ? `${code}${displayName}` : displayName
+                        return {
+                          value: customer.id,
+                          label: label,
+                          keywords: [customer.customerCode || "", displayName, customer.phone, label]
+                        }
+                      })}
+                      placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")}
+                      searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
+                      emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
+                      className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
+                    />
                   </div>
 
-                  <div>
-                    <Label htmlFor="date">{t("dateTime")}</Label>
+                  {/* Date - Spans 3 columns */}
+                  <div className="md:col-span-3">
+                    <Label htmlFor="date" className="text-xs mb-1 block">{t("dateTime")}</Label>
                     <Input
                       id="date"
                       type="datetime-local"
                       value={formData.date}
                       onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="text-right"
+                      className="text-right h-9 text-sm"
                       required
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Amount field - only for transactions with monetary value */}
-                  {(formData.type === "cash_in" || formData.type === "cash_out") && (
-                    <div>
-                      <Label htmlFor="amount">{t("amount")}</Label>
+                  {/* Amount - Spans 3 columns (if applicable) */}
+                  {(formData.type === "cash_in" || formData.type === "cash_out" || formData.type === "expense" || formData.type === "income") && (
+                    <div className="md:col-span-3">
+                      <Label htmlFor="amount" className="text-xs mb-1 block">{t("amount")}</Label>
                       <Input
                         id="amount"
                         type="number"
                         step="0.01"
                         value={formData.amount}
                         onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                        className="text-right"
+                        className="text-right h-9 text-sm"
                         required
                       />
                     </div>
                   )}
 
-                  {/* Account Selector for Cash Transactions */}
+                  {/* Account Selector - Spans 2 columns (if applicable) */}
                   {(formData.type === "cash_in" || formData.type === "cash_out") && (
-                    <div>
-                      <Label htmlFor="accountId">
+                    <div className="md:col-span-2">
+                      <Label htmlFor="accountId" className="text-xs mb-1 block">
                         {formData.type === "cash_in" ? t("depositTo") : t("withdrawFrom")}
                       </Label>
-                      <Select
+                      <SearchableSelect
                         value={formData.accountId}
                         onValueChange={(value) => setFormData({ ...formData, accountId: value })}
-                        required
-                      >
-                        <SelectTrigger id="accountId" className={lang === "fa" ? "text-right" : "text-left"} dir={lang === "fa" ? "rtl" : "ltr"}>
-                          <SelectValue placeholder={t("selectCashAccount")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="default-cash-safe">
-                            {lang === "fa" ? "صندوق من" : "Cash Safe"}
-                          </SelectItem>
-                          {(data.bankAccounts || []).map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.bankName} - {account.accountNumber}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={[
+                          { value: "default-cash-safe", label: lang === "fa" ? "صندوق" : "Cash Box" },
+                          ...(data.bankAccounts || []).map((account) => ({
+                            value: account.id,
+                            label: `${account.bankName} - ${account.accountNumber}`
+                          }))
+                        ]}
+                        placeholder={t("selectCashAccount")}
+                        searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
+                        emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
+                        className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
+                      />
                     </div>
                   )}
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Product Fields */}
                   {isFlourTransaction && (
                     <>
-                      <div>
-                        <Label htmlFor="productType">{t("productType")}</Label>
+                      <div className="md:col-span-3">
+                        <Label htmlFor="productType" className="text-xs mb-1 block">{t("productType")}</Label>
                         <Select
                           value={formData.productTypeId}
                           onValueChange={(value) => {
                             const selectedProduct = productTypes.find(f => f.id === value)
                             const updates: any = { productTypeId: value }
-
                             if (selectedProduct?.measurementType === "quantity") {
                               updates.weight = ""
                             } else if (selectedProduct?.measurementType === "weight") {
                               updates.quantity = ""
                             }
-
                             setFormData({ ...formData, ...updates })
                           }}
                         >
-                          <SelectTrigger className={lang === "fa" ? "text-right" : "text-left"} dir={lang === "fa" ? "rtl" : "ltr"}>
+                          <SelectTrigger className={`h-9 text-sm ${lang === "fa" ? "text-right" : "text-left"}`} dir={lang === "fa" ? "rtl" : "ltr"}>
                             <SelectValue placeholder={t("selectProductType")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -583,110 +661,108 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         </Select>
                       </div>
 
-                      <div>
-                        <Label htmlFor="quantity">{t("quantity")}</Label>
-                        <Input
-                          id="quantity"
-                          type="number"
-                          value={formData.quantity}
-                          onChange={(e) => {
-                            const quantity = e.target.value
-                            setFormData({ ...formData, quantity })
-                            if (
-                              quantity &&
-                              formData.unitPrice &&
-                              (formData.type === "product_purchase" || formData.type === "product_sale")
-                            ) {
-                              const qtyNum = Number.parseInt(quantity)
-                              const priceNum = Number.parseFloat(formData.unitPrice)
-                              if (!isNaN(qtyNum) && !isNaN(priceNum)) {
-                                const total = qtyNum * priceNum
-                                setFormData((prev) => ({ ...prev, quantity, amount: total.toString() }))
-                              }
-                            }
-                          }}
-                          className={lang === "fa" ? "text-right" : "text-left"}
-                          dir={lang === "fa" ? "rtl" : "ltr"}
-                          onWheel={(e) => e.currentTarget.blur()}
-                          required={formData.type === "product_purchase" || formData.type === "product_sale"}
-                          disabled={productTypes.find(f => f.id === formData.productTypeId)?.measurementType === "weight"}
-                        />
-                      </div>
+                      {(() => {
+                        const selectedProduct = productTypes.find(p => p.id === formData.productTypeId)
+                        const isQuantity = selectedProduct?.measurementType === "quantity"
+                        const isWeight = selectedProduct?.measurementType === "weight" || !selectedProduct
 
-                      <div>
-                        <Label htmlFor="weight">{t("weight")} ({weightUnits.find(u => u.value === formData.weightUnit)?.label || formData.weightUnit})</Label>
-                        <Input
-                          id="weight"
-                          type="number"
-                          step="0.1"
-                          value={formData.weight}
-                          onChange={(e) => {
-                            const weight = e.target.value
-                            setFormData({ ...formData, weight })
-                            if (
-                              weight &&
-                              formData.unitPrice &&
-                              (formData.type === "product_purchase" || formData.type === "product_sale")
-                            ) {
-                              const weightNum = Number.parseFloat(weight)
-                              const priceNum = Number.parseFloat(formData.unitPrice)
-                              if (!isNaN(weightNum) && !isNaN(priceNum)) {
-                                const total = weightNum * priceNum
-                                setFormData((prev) => ({ ...prev, weight, amount: total.toString() }))
-                              }
-                            }
-                          }}
-                          className={lang === "fa" ? "text-right" : "text-left"}
-                          dir={lang === "fa" ? "rtl" : "ltr"}
-                          onWheel={(e) => e.currentTarget.blur()}
-                          required={formData.type === "product_purchase" || formData.type === "product_sale"}
-                          disabled={productTypes.find(f => f.id === formData.productTypeId)?.measurementType === "quantity"}
-                        />
-                      </div>
+                        return (
+                          <>
+                            {isWeight && (
+                              <div className="md:col-span-2">
+                                <Label htmlFor="weight" className="text-xs mb-1 block">{t("weight")}</Label>
+                                <Input
+                                  id="weight"
+                                  type="number"
+                                  step="0.001"
+                                  value={formData.weight}
+                                  onChange={(e) => {
+                                    const weight = e.target.value
+                                    setFormData(prev => {
+                                      const newData = { ...prev, weight }
+                                      if (weight && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
+                                        const weightNum = Number.parseFloat(weight)
+                                        const priceNum = Number.parseFloat(prev.unitPrice)
+                                        if (!isNaN(weightNum) && !isNaN(priceNum)) {
+                                          newData.amount = (weightNum * priceNum).toString()
+                                        }
+                                      }
+                                      return newData
+                                    })
+                                  }}
+                                  className="text-right h-9 text-sm"
+                                  placeholder={t("weightPlaceholder")}
+                                />
+                              </div>
+                            )}
+                            {isQuantity && (
+                              <div className="md:col-span-2">
+                                <Label htmlFor="quantity" className="text-xs mb-1 block">{t("quantity")}</Label>
+                                <Input
+                                  id="quantity"
+                                  type="number"
+                                  step="1"
+                                  value={formData.quantity}
+                                  onChange={(e) => {
+                                    const quantity = e.target.value
+                                    setFormData(prev => {
+                                      const newData = { ...prev, quantity }
+                                      if (quantity && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
+                                        const qtyNum = Number.parseInt(quantity)
+                                        const priceNum = Number.parseFloat(prev.unitPrice)
+                                        if (!isNaN(qtyNum) && !isNaN(priceNum)) {
+                                          newData.amount = (qtyNum * priceNum).toString()
+                                        }
+                                      }
+                                      return newData
+                                    })
+                                  }}
+                                  className="text-right h-9 text-sm"
+                                  placeholder={t("quantityPlaceholder")}
+                                />
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
 
                       {(formData.type === "product_purchase" || formData.type === "product_sale") && (
-                        <div>
-                          <Label htmlFor="unitPrice">
-                            {t("unitPrice")} ({data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}/
-                            {productTypes.find(f => f.id === formData.productTypeId)?.measurementType === "quantity"
-                              ? t("unit")
-                              : (weightUnits.find(u => u.value === formData.weightUnit)?.label || formData.weightUnit)}
-                            )
-                          </Label>
-                          <Input
-                            id="unitPrice"
-                            type="number"
-                            step="0.01"
-                            value={formData.unitPrice}
-                            onChange={(e) => {
-                              const unitPrice = e.target.value
-                              setFormData({ ...formData, unitPrice })
-                              if (unitPrice) {
-                                const priceNum = Number.parseFloat(unitPrice)
-                                if (!isNaN(priceNum)) {
-                                  let total = 0
-                                  if (formData.weight) {
-                                    const weightNum = Number.parseFloat(formData.weight)
-                                    if (!isNaN(weightNum)) {
-                                      total = weightNum * priceNum
-                                    }
-                                  } else if (formData.quantity) {
-                                    const qtyNum = Number.parseInt(formData.quantity)
-                                    if (!isNaN(qtyNum)) {
-                                      total = qtyNum * priceNum
+                        <div className="md:col-span-3">
+                          <Label htmlFor="unitPrice" className="text-xs mb-1 block">{t("unitPrice")}</Label>
+                          <div className="relative">
+                            <Input
+                              id="unitPrice"
+                              type="number"
+                              step="0.01"
+                              value={formData.unitPrice}
+                              onChange={(e) => {
+                                const unitPrice = e.target.value
+                                setFormData(prev => {
+                                  const newData = { ...prev, unitPrice }
+                                  if (unitPrice) {
+                                    const priceNum = Number.parseFloat(unitPrice)
+                                    if (!isNaN(priceNum)) {
+                                      let total = 0
+                                      if (prev.weight) {
+                                        const weightNum = Number.parseFloat(prev.weight)
+                                        if (!isNaN(weightNum)) total = weightNum * priceNum
+                                      } else if (prev.quantity) {
+                                        const qtyNum = Number.parseInt(prev.quantity)
+                                        if (!isNaN(qtyNum)) total = qtyNum * priceNum
+                                      }
+                                      if (total > 0) newData.amount = total.toString()
                                     }
                                   }
-                                  if (total > 0) {
-                                    setFormData((prev) => ({ ...prev, unitPrice, amount: total.toString() }))
-                                  }
-                                }
-                              }
-                            }}
-                            className={lang === "fa" ? "text-right" : "text-left"}
-                            dir={lang === "fa" ? "rtl" : "ltr"}
-                            onWheel={(e) => e.currentTarget.blur()}
-                            required
-                          />
+                                  return newData
+                                })
+                              }}
+                              className="text-right h-9 text-sm pl-8"
+                              placeholder="0.00"
+                            />
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                              {data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </>
@@ -696,8 +772,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                     formData.type === "product_sale" ||
                     formData.type === "expense" ||
                     formData.type === "income") && (
-                      <div className={isFlourTransaction ? "md:col-span-1" : ""}>
-                        <Label htmlFor="amount">
+                      <div className={isFlourTransaction ? "md:col-span-2" : "md:col-span-3"}>
+                        <Label htmlFor="amount" className="text-xs mb-1 block">
                           {formData.type === "product_purchase" || formData.type === "product_sale"
                             ? `${t("totalAmountUSD")} (${data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"})`
                             : `${t("amountUSD")} (${data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"})`}
@@ -708,9 +784,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                           step="0.01"
                           value={formData.amount}
                           onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                          className={lang === "fa" ? "text-right" : "text-left"}
-                          dir={lang === "fa" ? "rtl" : "ltr"}
-                          onWheel={(e) => e.currentTarget.blur()}
+                          className="text-right h-9 text-sm"
                           required
                           readOnly={
                             (formData.type === "product_purchase" || formData.type === "product_sale") &&
@@ -722,16 +796,17 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                     )}
                 </div>
 
-                <div>
-                  <Label htmlFor="description">{t("descriptionOptional")}</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className={lang === "fa" ? "text-right" : "text-left"}
-                    dir={lang === "fa" ? "rtl" : "ltr"}
-                    rows={3}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-12">
+                    <Label htmlFor="description" className="text-xs mb-1 block">{t("descriptionOptional")}</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="text-right h-16 text-sm resize-none"
+                      placeholder={t("descriptionPlaceholder")}
+                    />
+                  </div>
                 </div>
 
                 {validationError && (

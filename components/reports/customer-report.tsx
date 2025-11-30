@@ -71,7 +71,22 @@ export function CustomerReport({ data }: CustomerReportProps) {
   }, [customerTransactions])
 
   const getCustomerName = (customerId: string) => {
-    return data.customers.find((customer) => customer.id === customerId)?.name || "نامشخص"
+    const customer = data.customers.find((c) => c.id === customerId)
+    if (customer) {
+      // ترجمه حساب‌های پیش‌فرض
+      if (customer.id === "default-cash-safe") {
+        return "صندوق من"
+      }
+      if (customer.id === "default-warehouse") {
+        return "انبار"
+      }
+      return customer.name
+    }
+
+    const bankAccount = data.bankAccounts?.find((b) => b.id === customerId)
+    if (bankAccount) return `${bankAccount.bankName} - ${bankAccount.accountHolder}`
+
+    return "نامشخص"
   }
 
   const getProductTypeName = (productTypeId?: string) => {

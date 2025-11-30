@@ -1,14 +1,17 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Package, DollarSign, Search, Trash2, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
-import type { AppData, TransactionType, ProductType } from "@/types"
+import type { AppData, TransactionType, ProductType, Transaction } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import { formatBothDatesWithTime } from "@/lib/date-utils"
 import { buildLetterheadHTML, type CompanyInfo } from "@/components/print/build-letterhead-html"
@@ -45,6 +48,42 @@ interface TransactionListProps {
 type SortField = "documentNumber" | "type" | "customer" | "productType" | "weight" | "quantity" | "unitPrice" | "amount" | "date" | "description"
 type SortDirection = "asc" | "desc"
 
+const TruncatedTooltip = ({ children, text }: { children: React.ReactNode; text: string }) => {
+  const [isTruncated, setIsTruncated] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const checkTruncation = () => {
+      if (ref.current) {
+        setIsTruncated(ref.current.scrollWidth > ref.current.clientWidth)
+      }
+    }
+
+    checkTruncation()
+    window.addEventListener("resize", checkTruncation)
+    return () => window.removeEventListener("resize", checkTruncation)
+  }, [text])
+
+  if (!isTruncated) {
+    return <div ref={ref} className="truncate">{children}</div>
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div ref={ref} className="truncate cursor-default">
+            {children}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export function TransactionList({ data, onDataChange, onEdit }: TransactionListProps) {
   const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const { t, lang } = useLang()
@@ -54,6 +93,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
   const [filterCustomer, setFilterCustomer] = useState("all")
   const [filterProductType, setFilterProductType] = useState("all")
   const [displayWeightUnit, setDisplayWeightUnit] = useState("original")
+  const [showCashSafeDocs, setShowCashSafeDocs] = useState(true)
+  const [showBankDocs, setShowBankDocs] = useState(true)
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set()) // Track which main docs are expanded
 
   const convertWeight = (weight: number, fromUnit: string, toUnit: string) => {
     if (fromUnit === toUnit) return weight
@@ -77,6 +119,14 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       case "lb": return weightInTon * 2204.62;
       case "ton": default: return weightInTon;
     }
+  }
+
+  const convertWeightToTons = (weight: number | undefined, weightUnit: string | undefined): number => {
+    if (!weight) return 0
+    let weightInTon = weight
+    if (weightUnit === "kg") {
+      weightInTon = weight / 1000
+    }
     return weightInTon
   }
 
@@ -88,7 +138,21 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
   const [itemsPerPage, setItemsPerPage] = useState(25)
 
   const getCustomerName = (customerId: string) => {
-    return data.customers.find((customer) => customer.id === customerId)?.name || t("unknown")
+    const customer = data.customers.find((c) => c.id === customerId)
+    if (customer) {
+      // ترجمه حساب‌های پیش‌فرض
+      if (customer.id === "default-cash-safe") {
+        return lang === "fa" ? "صندوق" : "Cash Box"
+      } else if (customer.id === "default-warehouse") {
+        return lang === "fa" ? "موجودی" : "Inventory"
+      }
+      return customer.name
+    }
+
+    const bankAccount = data.bankAccounts?.find((b) => b.id === customerId)
+    if (bankAccount) return `${bankAccount.bankName} - ${bankAccount.accountHolder}`
+
+    return t("unknown")
   }
 
   const getProductTypeName = (productTypeId?: string) => {
@@ -96,7 +160,10 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
     return productTypes.find((productType) => productType.id === productTypeId)?.name || t("unknown")
   }
 
-  const getTransactionTypeInfo = (type: TransactionType) => {
+  const getTransactionTypeInfo = (transaction: Transaction) => {
+    const type = transaction.type
+    const isBankAccount = transaction.accountId && transaction.accountId !== "default-cash-safe"
+
     switch (type) {
       case "product_in":
         return { label: t("productIn"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowDown }
@@ -107,32 +174,77 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       case "product_sale":
         return { label: t("productSale"), icon: Package, color: "bg-purple-100 text-purple-800", arrow: ArrowUp }
       case "cash_in":
-        return { label: t("cashIn"), icon: DollarSign, color: "bg-green-100 text-green-800", arrow: ArrowDown }
+        return {
+          label: isBankAccount ? t("bankReceipt") : t("cashReceipt"),
+          icon: DollarSign,
+          color: "bg-green-100 text-green-800",
+          arrow: ArrowDown
+        }
       case "cash_out":
-        return { label: t("cashOut"), icon: DollarSign, color: "bg-red-100 text-red-800", arrow: ArrowUp }
+        return {
+          label: isBankAccount ? t("bankWithdrawal") : t("cashPayment"),
+          icon: DollarSign,
+          color: "bg-red-100 text-red-800",
+          arrow: ArrowUp
+        }
       case "expense":
         return { label: t("expense"), icon: DollarSign, color: "bg-orange-100 text-orange-800", arrow: ArrowUp }
       case "income":
         return { label: t("income"), icon: DollarSign, color: "bg-emerald-100 text-emerald-800", arrow: ArrowDown }
       default:
-        return { label: t("unknown"), icon: DollarSign, color: "bg-gray-100 text-gray-800", arrow: ArrowUp }
+        return { label: t("unknown"), icon: DollarSign, color: "bg-gray-100 text-gray-800", arrow: ArrowDown }
     }
   }
 
   const filteredTransactions = useMemo(() => {
     return data.transactions.filter((transaction) => {
-      const matchesSearch =
-        getCustomerName(transaction.customerId).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (transaction.productTypeId && getProductTypeName(transaction.productTypeId).toLowerCase().includes(searchTerm.toLowerCase()))
+      // فیلتر کردن زیرسندها - فقط سندهای اصلی و سندهای بدون parent را نمایش بده
+      if (transaction.parentDocumentId) return false
+
+      const typeInfo = getTransactionTypeInfo(transaction)
+      const customerName = getCustomerName(transaction.customerId)
+      const productTypeName = getProductTypeName(transaction.productTypeId)
+      const searchLower = searchTerm.toLowerCase()
+
+      const matchesSearch = transaction.documentNumber.toLowerCase().includes(searchLower) ||
+        customerName.toLowerCase().includes(searchLower) ||
+        productTypeName.toLowerCase().includes(searchLower) ||
+        typeInfo.label.toLowerCase().includes(searchLower) ||
+        transaction.description.toLowerCase().includes(searchLower)
 
       const matchesType = filterType === "all" || transaction.type === filterType
       const matchesCustomer = filterCustomer === "all" || transaction.customerId === filterCustomer
       const matchesProductType = filterProductType === "all" || transaction.productTypeId === filterProductType
 
-      return matchesSearch && matchesType && matchesCustomer && matchesProductType
+      // Bank & Cash Safe Filters
+      const isCashSafe = transaction.customerId === "default-cash-safe"
+      const isBank = data.bankAccounts?.some(b => b.id === transaction.customerId)
+
+      let matchesAccountType = true
+      if (filterCustomer === "all") {
+        if (isCashSafe && !showCashSafeDocs) matchesAccountType = false
+        if (isBank && !showBankDocs) matchesAccountType = false
+      }
+
+      return matchesSearch && matchesType && matchesCustomer && matchesProductType && matchesAccountType
     })
-  }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType])
+  }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType, showCashSafeDocs, showBankDocs, data.bankAccounts])
+
+  const toggleExpand = (docId: string) => {
+    setExpandedDocs(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(docId)) {
+        newSet.delete(docId)
+      } else {
+        newSet.add(docId)
+      }
+      return newSet
+    })
+  }
+
+  const getSubdocuments = (parentId: string): Transaction[] => {
+    return data.transactions.filter(t => t.parentDocumentId === parentId)
+  }
 
   const handleDelete = (transactionId: string) => {
     if (confirm(t("deleteDocumentConfirm"))) {
@@ -191,8 +303,8 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           bValue = b.documentNumber || ""
           break
         case "type":
-          aValue = getTransactionTypeInfo(a.type).label
-          bValue = getTransactionTypeInfo(b.type).label
+          aValue = getTransactionTypeInfo(a).label
+          bValue = getTransactionTypeInfo(b).label
           break
         case "customer":
           aValue = getCustomerName(a.customerId)
@@ -263,7 +375,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
       return {
         documentNumber: t.documentNumber ?? "-",
-        type: getTransactionTypeInfo(t.type).label,
+        type: getTransactionTypeInfo(t).label,
         customerName: getCustomerName(t.customerId),
         productTypeName: getProductTypeName(t.productTypeId),
         weight: t.weight ? `${t.weight} ${t.weightUnit || "ton"}` : "-",
@@ -314,7 +426,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       const usdCls = green.has(t.type) ? "green" : red.has(t.type) ? "red" : "";
       return `<tr>
         <td>${t.documentNumber || "-"}</td>
-        <td>${getTransactionTypeInfo(t.type).label}</td>
+        <td>${getTransactionTypeInfo(t).label}</td>
         <td>${getCustomerName(t.customerId)}</td>
         <td>${getProductTypeName(t.productTypeId)}</td>
         <td>${t.quantity ? `${formatNumber(t.quantity)}` : "-"}</td>
@@ -412,9 +524,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("allProductTypes")}</SelectItem>
-            {productTypes.map((productType) => (
-              <SelectItem key={productType.id} value={productType.id}>
-                {productType.name}
+            {productTypes.map((type) => (
+              <SelectItem key={type.id} value={type.id}>
+                {type.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -432,6 +544,30 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
             <SelectItem value="mg">{t("weightUnit_mg")}</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+          <Checkbox
+            id="showCashSafe"
+            checked={showCashSafeDocs}
+            onCheckedChange={(checked) => setShowCashSafeDocs(checked as boolean)}
+          />
+          <Label htmlFor="showCashSafe" className="text-sm cursor-pointer">
+            {lang === "fa" ? "نمایش اسناد صندوق" : "Show Cash Box Docs"}
+          </Label>
+        </div>
+
+        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+          <Checkbox
+            id="showBankDocs"
+            checked={showBankDocs}
+            onCheckedChange={(checked) => setShowBankDocs(checked as boolean)}
+          />
+          <Label htmlFor="showBankDocs" className="text-sm cursor-pointer">
+            {lang === "fa" ? "نمایش اسناد بانکی" : "Show Bank Docs"}
+          </Label>
+        </div>
       </div>
 
       <Card>
@@ -544,7 +680,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           </TableHeader>
           <TableBody>
             {paginatedTransactions.map((transaction) => {
-              const typeInfo = getTransactionTypeInfo(transaction.type)
+              const typeInfo = getTransactionTypeInfo(transaction)
               const Icon = typeInfo.icon
               const Arrow = typeInfo.arrow
 
@@ -557,8 +693,56 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       {typeInfo.label}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[100px] truncate">{getCustomerName(transaction.customerId)}</TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[80px] truncate">{getProductTypeName(transaction.productTypeId)}</TableCell>
+                  <TableCell className="text-center text-xs p-2 max-w-[100px]">
+                    {(() => {
+                      const customer = data.customers.find((c) => c.id === transaction.customerId)
+                      let content: React.ReactNode = t("unknown")
+                      let text = t("unknown")
+
+                      if (customer) {
+                        // ترجمه حساب‌های پیش‌فرض
+                        if (customer.id === "default-cash-safe") {
+                          content = (
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 whitespace-nowrap">
+                              {lang === "fa" ? "صندوق" : "Cash Box"}
+                            </Badge>
+                          )
+                          text = lang === "fa" ? "صندوق" : "Cash Box"
+                        } else if (customer.id === "default-warehouse") {
+                          text = lang === "fa" ? "موجودی" : "Inventory"
+                          content = (
+                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 whitespace-nowrap">
+                              {text}
+                            </Badge>
+                          )
+                        } else {
+                          content = customer.name
+                          text = customer.name
+                        }
+                      } else {
+                        const bankAccount = data.bankAccounts?.find((b) => b.id === transaction.customerId)
+                        if (bankAccount) {
+                          text = `${bankAccount.bankName} - ${bankAccount.accountHolder}`
+                          content = (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 whitespace-nowrap">
+                              {text}
+                            </Badge>
+                          )
+                        }
+                      }
+
+                      return (
+                        <TruncatedTooltip text={text}>
+                          {content}
+                        </TruncatedTooltip>
+                      )
+                    })()}
+                  </TableCell>
+                  <TableCell className="text-center text-xs p-2 max-w-[80px]">
+                    <TruncatedTooltip text={getProductTypeName(transaction.productTypeId)}>
+                      {getProductTypeName(transaction.productTypeId)}
+                    </TruncatedTooltip>
+                  </TableCell>
                   <TableCell className="text-center text-xs p-2 whitespace-nowrap">
                     {transaction.quantity ? `${formatNumber(transaction.quantity)}` : "-"}
                   </TableCell>
@@ -701,13 +885,15 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       </Card>
 
       {/* Warning for large datasets */}
-      {sortedTransactions.length > 500 && (
-        <Card className="mt-4">
-          <div className="p-4 text-center text-sm text-orange-600">
-            ⚠️ {t("largeDatasetWarning")} ({sortedTransactions.length} {t("documentsCount")}).
-          </div>
-        </Card>
-      )}
+      {
+        sortedTransactions.length > 500 && (
+          <Card className="mt-4">
+            <div className="p-4 text-center text-sm text-orange-600">
+              ⚠️ {t("largeDatasetWarning")} ({sortedTransactions.length} {t("documentsCount")}).
+            </div>
+          </Card>
+        )
+      }
 
       <div className="flex justify-center gap-4 mt-4 print:hidden">
         <Button variant="secondary" onClick={handlePrintDocuments}>{t("printLastDocuments")}</Button>
@@ -715,6 +901,6 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           {t("printOnLetterhead")}
         </Button>
       </div>
-    </div>
+    </div >
   )
 }

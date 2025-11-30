@@ -216,6 +216,7 @@ export default function Settings({ data, onDataChange }: SettingsProps) {
                             ? app.bulkTransactionsTehran
                             : [],
                 currencies: Array.isArray(app.currencies) ? app.currencies : data.currencies || [],
+                bankAccounts: Array.isArray(app.bankAccounts) ? app.bankAccounts : data.bankAccounts || [],
             } as AppData & { backupInfo?: any; snapshots?: any }
 
             backupData.snapshots = computeSnapshots(backupData)
@@ -331,6 +332,7 @@ ${backupData.backupInfo.totalRecords.productTypes} نوع آرد`,
                 bulkTransactions: Array.isArray(restored.bulkTransactions) ? restored.bulkTransactions : [],
                 bulkTransactionsTehran: Array.isArray(restored.bulkTransactionsTehran) ? restored.bulkTransactionsTehran : [],
                 currencies: Array.isArray(restored.currencies) ? restored.currencies : [],
+                bankAccounts: Array.isArray(restored.bankAccounts) ? restored.bankAccounts : [],
             }
 
             // --- 1) Purge any previous data to avoid merge/ghost records ---
@@ -447,6 +449,7 @@ ${totalRecords.productTypes || 0} نوع آرد`
                 bulkTransactions: [],
                 bulkTransactionsTehran: [],
                 currencies: [],
+                bankAccounts: [],
             }
             await fetch("/api/db", {
                 method: "POST",

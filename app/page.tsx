@@ -104,7 +104,7 @@ export default function HomePage() {
       // ایجاد حساب جدید
       updatedCustomers.push({
         id: "default-cash-safe",
-        name: "Cash Safe",
+        name: "Cash Box",
         phone: "-",
         groupId: mainGroupId,
         createdAt: new Date().toISOString(),
@@ -114,11 +114,12 @@ export default function HomePage() {
       })
       needsUpdate = true
     } else {
-      // به‌روزرسانی حساب موجود: اطمینان از اختصاص به گروه Main و فعال بودن حفاظت
+      // به‌روزرسانی حساب موجود: اطمینان از نام صحیح، اختصاص به گروه Main و فعال بودن حفاظت
       const cashSafe = updatedCustomers[cashSafeIndex]
-      if (cashSafe.groupId !== mainGroupId || !cashSafe.isProtected) {
+      if (cashSafe.groupId !== mainGroupId || !cashSafe.isProtected || cashSafe.name !== "Cash Box") {
         updatedCustomers[cashSafeIndex] = {
           ...cashSafe,
+          name: "Cash Box",
           groupId: mainGroupId,
           isProtected: true,
         }
@@ -132,7 +133,7 @@ export default function HomePage() {
       // ایجاد حساب جدید
       updatedCustomers.push({
         id: "default-warehouse",
-        name: "Warehouse",
+        name: "Inventory",
         phone: "-",
         groupId: mainGroupId,
         createdAt: new Date().toISOString(),
@@ -364,7 +365,7 @@ export default function HomePage() {
       case "bank-accounts":
         return <BankAccounts data={data} onDataChange={saveData} />
       case "product-types":
-        return <ProductTypesManager productTypes={productTypes} onProductTypesChange={saveProductTypes} />
+        return <ProductTypesManager productTypes={productTypes} transactions={data.transactions} onProductTypesChange={saveProductTypes} />
       case "transactions":
         return <TransactionForm data={data} onDataChange={saveData} productTypes={productTypes} />
       case "cash-inventory":

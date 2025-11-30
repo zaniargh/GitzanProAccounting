@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Edit, Trash2, Search, ChevronUp, ChevronDown, Printer, Shield } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import type { Customer, AppData, ProductType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import { useLang } from "@/components/language-provider"
@@ -25,27 +26,29 @@ type SortDirection = "asc" | "desc"
 export function CustomerList({ data, onDataChange }: CustomerListProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
-  const [formData, setFormData] = useState({ name: "", phone: "", groupId: "" })
+  const [formData, setFormData] = useState({ name: "", phone: "", groupId: "", customerCode: "" })
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<SortField>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
+  const [customerCodeError, setCustomerCodeError] = useState("")
+  const [showWarehouse, setShowWarehouse] = useState(true)
+  const [showCashSafe, setShowCashSafe] = useState(true)
   const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
   const { t, lang } = useLang()
 
   // تابع کمکی برای نمایش نام‌های ترجمه‌شده برای حساب‌های پیش‌فرض
   const getDisplayName = (customer: Customer) => {
     if (customer.id === "default-cash-safe") {
-      return lang === "fa" ? "صندوق من" : "Cash Safe"
-    }
-    if (customer.id === "default-warehouse") {
-      return lang === "fa" ? "انبار" : "Warehouse"
+      return "Cash Box"
+    } else if (customer.id === "default-warehouse") {
+      return lang === "fa" ? "موجودی" : "Inventory"
     }
     return customer.name
   }
 
   const getGroupName = (groupId: string) => {
-    const group = data.customerGroups.find((group) => group.id === groupId)
-    if (!group) return "نامشخص"
+    const group = data.customerGroups.find((g) => g.id === groupId)
+    if (!group) return "-"
 
     // ترجمه گروه اصلی
     if (group.id === "main-group") {
@@ -89,6 +92,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
     // محاسبه بدهی‌ها از تمام اسناد
     data.transactions.forEach((transaction) => {
       if (transaction.customerId === customerId) {
+        // Debug log for bank accounts
+        if (customerId.includes("bank") || customerId === "default-cash-safe") {
+          console.log("Found transaction for account:", customerId, transaction)
+        }
+
         switch (transaction.type) {
           case "product_purchase": // خرید محصول: مشتری بدهکار محصول، من بدهکار پول
             if (transaction.productTypeId) {
@@ -194,14 +202,58 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
     })
   }, [customersWithDebts, searchTerm, sortField, sortDirection])
 
+  // Apply warehouse and cash safe filters
+  const finalFilteredCustomers = useMemo(() => {
+    return sortedAndFilteredCustomers.filter(customer => {
+      if (customer.id === "default-warehouse" && !showWarehouse) return false
+      if (customer.id === "default-cash-safe" && !showCashSafe) return false
+      return true
+    })
+  }, [sortedAndFilteredCustomers, showWarehouse, showCashSafe])
+
+  const generateNextCustomerCode = () => {
+    const existingCodes = data.customers
+      .map(c => c.customerCode)
+      .filter((code): code is string => !!code)
+      .map(code => parseInt(code))
+      .filter(num => !isNaN(num))
+
+    if (existingCodes.length === 0) return "1"
+    return (Math.max(...existingCodes) + 1).toString()
+  }
+
+  const validateCustomerCode = (code: string, excludeCustomerId?: string): boolean => {
+    if (!code) {
+      setCustomerCodeError(lang === "fa" ? "کد مشتری الزامی است" : "Customer code is required")
+      return false
+    }
+
+    const isDuplicate = data.customers.some(
+      c => c.customerCode === code && c.id !== excludeCustomerId
+    )
+
+    if (isDuplicate) {
+      setCustomerCodeError(lang === "fa" ? "این کد قبلاً استفاده شده است" : "This code is already in use")
+      return false
+    }
+
+    setCustomerCodeError("")
+    return true
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Validate customer code
+    if (!validateCustomerCode(formData.customerCode, editingCustomer?.id)) {
+      return
+    }
 
     if (editingCustomer) {
       // ویرایش مشتری موجود
       const updatedCustomers = data.customers.map((customer) =>
         customer.id === editingCustomer.id
-          ? { ...customer, name: formData.name, phone: formData.phone, groupId: formData.groupId }
+          ? { ...customer, name: formData.name, phone: formData.phone, groupId: formData.groupId, customerCode: formData.customerCode }
           : customer,
       )
       onDataChange({ ...data, customers: updatedCustomers })
@@ -210,6 +262,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
         id: crypto.randomUUID(),
         name: formData.name,
         phone: formData.phone,
+        customerCode: formData.customerCode,
         groupId: formData.groupId,
         createdAt: new Date().toISOString(),
         cashDebt: 0,
@@ -221,14 +274,16 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
       })
     }
 
-    setFormData({ name: "", phone: "", groupId: "" })
+    setFormData({ name: "", phone: "", groupId: "", customerCode: "" })
+    setCustomerCodeError("")
     setEditingCustomer(null)
     setIsDialogOpen(false)
   }
 
   const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer)
-    setFormData({ name: customer.name, phone: customer.phone, groupId: customer.groupId })
+    setFormData({ name: customer.name, phone: customer.phone, groupId: customer.groupId, customerCode: customer.customerCode || "" })
+    setCustomerCodeError("")
     setIsDialogOpen(true)
   }
 
@@ -253,7 +308,9 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
 
   const openAddDialog = () => {
     setEditingCustomer(null)
-    setFormData({ name: "", phone: "", groupId: data.customerGroups[0]?.id || "" })
+    const nextCode = generateNextCustomerCode()
+    setFormData({ name: "", phone: "", groupId: data.customerGroups[0]?.id || "", customerCode: nextCode })
+    setCustomerCodeError("")
     setIsDialogOpen(true)
   }
 
@@ -394,7 +451,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
             </tr>
           </thead>
           <tbody>
-            ${sortedAndFilteredCustomers
+            ${finalFilteredCustomers
         .map(
           (customer, index) => `
               <tr>
@@ -460,8 +517,30 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
             />
           </div>
         </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2 rtl:space-x-reverse">
+            <Checkbox
+              id="showCashSafe"
+              checked={showCashSafe}
+              onCheckedChange={(checked) => setShowCashSafe(checked as boolean)}
+            />
+            <Label htmlFor="showCashSafe" className="text-sm cursor-pointer">
+              {lang === "fa" ? "نمایش صندوق" : "Show Cash Box"}
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="showWarehouse"
+              checked={showWarehouse}
+              onCheckedChange={(checked) => setShowWarehouse(checked as boolean)}
+            />
+            <Label htmlFor="showWarehouse" className="text-sm cursor-pointer">
+              {lang === "fa" ? "نمایش موجودی" : "Show Inventory"}
+            </Label>
+          </div>
+        </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePrint} disabled={sortedAndFilteredCustomers.length === 0}>
+          <Button variant="outline" onClick={handlePrint} disabled={finalFilteredCustomers.length === 0}>
             <Printer className="h-4 w-4 ml-2" />
             {t("printList")}
           </Button>
@@ -496,6 +575,27 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   />
                 </div>
                 <div>
+                  <Label htmlFor="customerCode">{lang === "fa" ? "کد مشتری" : "Customer Code"}</Label>
+                  <Input
+                    id="customerCode"
+                    value={formData.customerCode}
+                    onChange={(e) => {
+                      setFormData({ ...formData, customerCode: e.target.value })
+                      setCustomerCodeError("")
+                    }}
+                    required
+                    placeholder={lang === "fa" ? "کد یکتا برای مشتری" : "Unique code for customer"}
+                  />
+                  {customerCodeError && (
+                    <p className="text-xs text-red-600 mt-1">{customerCodeError}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {lang === "fa"
+                      ? "کد مشتری باید یکتا باشد. سیستم به صورت خودکار شماره بعدی را پیشنهاد می‌دهد."
+                      : "Customer code must be unique. System auto-suggests the next number."}
+                  </p>
+                </div>
+                <div>
                   <Label htmlFor="group">{t("group")}</Label>
                   <Select
                     value={formData.groupId}
@@ -508,7 +608,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                     <SelectContent>
                       {data.customerGroups.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
-                          {group.name}
+                          {group.id === "main-group" ? (lang === "fa" ? "اصلی" : "Main") : group.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -542,6 +642,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
           <Table>
             <TableHeader>
               <TableRow>
+                <SortableHeader field="name">{lang === "fa" ? "کد" : "Code"}</SortableHeader>
                 <SortableHeader field="name">{t("name")}</SortableHeader>
                 <SortableHeader field="phone">{t("phone")}</SortableHeader>
                 <SortableHeader field="group">{t("group")}</SortableHeader>
@@ -551,8 +652,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedAndFilteredCustomers.map((customer) => (
+              {finalFilteredCustomers.map((customer) => (
                 <TableRow key={customer.id} className={customer.isProtected ? "bg-orange-50" : ""}>
+                  <TableCell className="font-mono text-sm text-muted-foreground">
+                    {customer.customerCode || "-"}
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       {getDisplayName(customer)}
@@ -633,7 +737,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
               ))}
             </TableBody>
           </Table>
-          {sortedAndFilteredCustomers.length === 0 && (
+          {finalFilteredCustomers.length === 0 && (
             <div className="p-8 text-center">
               <p className="text-muted-foreground">
                 {searchTerm ? "مشتری مورد نظر یافت نشد" : "هیچ مشتری تعریف نشده است"}

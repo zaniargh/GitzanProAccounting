@@ -10,6 +10,7 @@ export interface Customer {
   id: string
   name: string
   phone: string
+  customerCode?: string // کد مشتری - یکتا
   groupId: string
   createdAt: string
   // بدهی‌ها و بستانکاری‌ها
@@ -21,6 +22,7 @@ export interface Customer {
 export interface ProductType {
   id: string
   name: string
+  productCode?: string // کد محصول - یکتا
   description?: string
   measurementType?: "quantity" | "weight"
   createdAt: string
@@ -53,7 +55,9 @@ export interface Transaction {
   date: string // تاریخ سند (از کاربر)
   createdAt: string // تاریخ ایجاد دقیق
   linkedTransactionId?: string // لینک به تراکنش مرتبط (برای Double-Entry)
-  accountId?: string // حساب نقدی (Cash Safe یا Bank Account) برای cash_in و cash_out
+  accountId?: string // حساب نقدی (Cash Box یا Bank Account) برای cash_in و cash_out
+  isMainDocument?: boolean // آیا این سند اصلی است (دارای زیرسندها)
+  parentDocumentId?: string // شناسه سند اصلی (فقط برای زیرسندها)
 }
 
 export interface Currency {
