@@ -298,24 +298,47 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
         )
       }
 
-      // اگر تراکنش مرتبط دارد و نوع product_in یا product_out است، تراکنش انبار را هم به‌روزرسانی کن
-      if (editingTransaction.linkedTransactionId && (formData.type === "product_in" || formData.type === "product_out")) {
+      // به‌روزرسانی زیرسندهای product_in و product_out (اگر سند اصلی است)
+      if (editingTransaction.isMainDocument && (formData.type === "product_in" || formData.type === "product_out")) {
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
+        const weight = formData.weight ? Number.parseFloat(formData.weight) : undefined
+        const quantity = formData.quantity ? Number.parseInt(formData.quantity) : undefined
 
-        updatedTransactions = updatedTransactions.map((transaction) =>
-          transaction.id === editingTransaction.linkedTransactionId
-            ? {
-              ...transaction,
-              type: formData.type, // نوع یکسان
-              weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
-              quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
-              productTypeId: formData.productTypeId,
-              description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
-              date: formData.date, // تاریخ جدید
-              weightUnit: formData.weightUnit,
+        updatedTransactions = updatedTransactions.map((t) => {
+          if (t.parentDocumentId === editingTransaction.id) {
+            const isSubDoc1 = t.documentNumber?.endsWith("-1")
+            const isSubDoc2 = t.documentNumber?.endsWith("-2")
+
+            if (isSubDoc1) {
+              // زیرسند 1: مشتری
+              return {
+                ...t,
+                type: formData.type,
+                customerId: formData.customerId,
+                weight: formData.type === "product_in" ? (weight ? -weight : undefined) : weight,
+                quantity: formData.type === "product_in" ? (quantity ? -quantity : undefined) : quantity,
+                productTypeId: formData.productTypeId,
+                description: formData.description,
+                date: formData.date,
+                weightUnit: formData.weightUnit,
+              }
+            } else if (isSubDoc2) {
+              // زیرسند 2: انبار
+              return {
+                ...t,
+                type: formData.type,
+                customerId: "default-warehouse",
+                weight: formData.type === "product_in" ? weight : (weight ? -weight : undefined),
+                quantity: formData.type === "product_in" ? quantity : (quantity ? -quantity : undefined),
+                productTypeId: formData.productTypeId,
+                description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
+                date: formData.date,
+                weightUnit: formData.weightUnit,
+              }
             }
-            : transaction,
-        )
+          }
+          return t
+        })
       }
 
       onDataChange({
@@ -409,28 +432,68 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
 
         newTransactions = [mainDocument, subDocument1, subDocument2]
       } else if (formData.type === "product_in" || formData.type === "product_out") {
-        // برای محصولات، همان روال قبلی warehouse
+        // سیستم سند اصلی + 2 زیرسند برای محصولات
         const customerName = data.customers.find(c => c.id === formData.customerId)?.name || "Unknown"
-        const warehouseTransactionId = crypto.randomUUID()
 
-        const warehouseTransaction: Transaction = {
-          id: warehouseTransactionId,
-          documentNumber: generateDocumentNumber([...data.transactions, newTransaction]),
+        const mainDocId = crypto.randomUUID()
+        const subDoc1Id = crypto.randomUUID()
+        const subDoc2Id = crypto.randomUUID()
+
+        const weight = formData.weight ? Number.parseFloat(formData.weight) : undefined
+        const quantity = formData.quantity ? Number.parseInt(formData.quantity) : undefined
+
+        // سند اصلی (خلاصه)
+        const mainDocument: Transaction = {
+          id: mainDocId,
+          documentNumber: generateDocumentNumber(data.transactions),
           type: formData.type,
-          customerId: "default-warehouse",
+          customerId: formData.customerId,
           amount: 0,
-          weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
-          quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
+          weight: formData.type === "product_in" ? (weight ? -weight : undefined) : weight,
+          quantity: formData.type === "product_in" ? (quantity ? -quantity : undefined) : quantity,
           productTypeId: formData.productTypeId,
           description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),
           weightUnit: formData.weightUnit,
-          linkedTransactionId: newTransaction.id,
+          isMainDocument: true,
         }
 
-        newTransaction.linkedTransactionId = warehouseTransactionId
-        newTransactions = [newTransaction, warehouseTransaction]
+        // زیرسند 1: سمت مشتری
+        const subDocument1: Transaction = {
+          id: subDoc1Id,
+          documentNumber: `${mainDocument.documentNumber}-1`,
+          type: formData.type,
+          customerId: formData.customerId,
+          amount: 0,
+          weight: formData.type === "product_in" ? (weight ? -weight : undefined) : weight,
+          quantity: formData.type === "product_in" ? (quantity ? -quantity : undefined) : quantity,
+          productTypeId: formData.productTypeId,
+          description: formData.description,
+          date: formData.date,
+          createdAt: getLocalDateTime(),
+          weightUnit: formData.weightUnit,
+          parentDocumentId: mainDocId,
+        }
+
+        // زیرسند 2: سمت انبار
+        const subDocument2: Transaction = {
+          id: subDoc2Id,
+          documentNumber: `${mainDocument.documentNumber}-2`,
+          type: formData.type,
+          customerId: "default-warehouse",
+          amount: 0,
+          weight: formData.type === "product_in" ? weight : (weight ? -weight : undefined),
+          quantity: formData.type === "product_in" ? quantity : (quantity ? -quantity : undefined),
+          productTypeId: formData.productTypeId,
+          description: `${formData.type === "product_in" ? (lang === "fa" ? "دریافت از" : "Received from") : (lang === "fa" ? "ارسال به" : "Sent to")} ${customerName}`,
+          date: formData.date,
+          createdAt: getLocalDateTime(),
+          weightUnit: formData.weightUnit,
+          parentDocumentId: mainDocId,
+        }
+
+        newTransactions = [mainDocument, subDocument1, subDocument2]
       } else {
         newTransactions = [newTransaction]
       }

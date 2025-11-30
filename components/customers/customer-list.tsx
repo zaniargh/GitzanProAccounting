@@ -148,8 +148,9 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   case "lb": amount /= 2204.62; break;
                 }
               }
+              // استفاده مستقیم از amount چون قبلاً signed شده (منفی/مثبت)
               productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) - amount
+                (productDebts[transaction.productTypeId] || 0) + amount
             }
             break
           case "product_out":
@@ -163,6 +164,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   case "lb": amount /= 2204.62; break;
                 }
               }
+              // استفاده مستقیم از amount چون قبلاً signed شده (منفی/مثبت)
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) + amount
             }

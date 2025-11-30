@@ -682,7 +682,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
               const renderRow = (trans: Transaction, isSubdoc = false) => (
                 <TableRow key={trans.id} className={isSubdoc ? "bg-muted/30" : ""}>
-                  <TableCell className="text-center font-mono text-[10px] p-2">
+                  <TableCell className={`text-center font-mono p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
                     <div className="flex items-center justify-center gap-1">
                       {!isSubdoc && hasSubdocs && (
                         <Button
@@ -703,11 +703,11 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     </div>
                   </TableCell>
                   <TableCell className="text-center p-2">
-                    <Badge className={`${getTransactionTypeInfo(trans).color} text-[9px] px-1 py-0`}>
+                    <Badge className={`${getTransactionTypeInfo(trans).color} ${isSubdoc ? "text-[8px]" : "text-[9px]"} px-1 py-0`}>
                       {getTransactionTypeInfo(trans).label}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[100px]">
+                  <TableCell className={`text-center p-2 max-w-[100px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                     {(() => {
                       const customer = data.customers.find((c) => c.id === trans.customerId)
                       let content: React.ReactNode = t("unknown")
@@ -751,33 +751,39 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       )
                     })()}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[80px]">
+                  <TableCell className={`text-center p-2 max-w-[80px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                     <TruncatedTooltip text={getProductTypeName(trans.productTypeId)}>
                       {getProductTypeName(trans.productTypeId)}
                     </TruncatedTooltip>
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {trans.quantity ? `${formatNumber(trans.quantity)}` : "-"}
-                  </TableCell>
-                  <TableCell className="text-center text-xs p-2 whitespace-nowrap">
-                    {trans.weight ? (
-                      displayWeightUnit === "original" ? (
-                        `${formatNumber(trans.weight)} ${trans.weightUnit || "ton"}`
-                      ) : (
-                        `${formatNumber(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
-                      )
+                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                    {trans.quantity ? (
+                      <span className={`font-medium ${getAmountClass(trans.quantity)}`}>
+                        {formatNumber(Math.abs(trans.quantity))}
+                      </span>
                     ) : "-"}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 whitespace-nowrap">
+                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                    {trans.weight ? (
+                      <span className={`font-medium ${getAmountClass(trans.weight)}`}>
+                        {displayWeightUnit === "original" ? (
+                          `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
+                        ) : (
+                          `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                        )}
+                      </span>
+                    ) : "-"}
+                  </TableCell>
+                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                     {(trans.unitPrice != null) ? `${formatNumber(trans.unitPrice)}`
                       : ((trans.weight && trans.amount) ? `${formatNumber(trans.amount / trans.weight)}` : "-")}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 whitespace-nowrap">
+                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                     <span className={`font-bold ${getAmountClass(trans.amount)}`}>
                       {formatNumber(Math.abs(trans.amount))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
                     </span>
                   </TableCell>
-                  <TableCell className="text-center text-[10px] p-2">
+                  <TableCell className={`text-center p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
                     {lang === "fa" ? (
                       <div>
                         <div className="font-medium">
@@ -793,7 +799,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-center text-xs p-2 max-w-[120px] truncate" title={trans.description}>
+                  <TableCell className={`text-center p-2 max-w-[120px] truncate ${isSubdoc ? "text-[10px]" : "text-xs"}`} title={trans.description}>
                     {trans.description}
                   </TableCell>
                   <TableCell className="text-center p-2">
