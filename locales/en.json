@@ -116,6 +116,7 @@
   "unitPriceUSD": "Unit Price (USD/ton)",
   "pricePerTon": "Price per ton",
   "totalAmountUSD": "Total Amount (USD)",
+  "totalAmount": "Total Amount",
   "amountUSD": "Amount (USD)",
   "amount": "Amount",
   "descriptionOptional": "Description (Optional)",
@@ -198,5 +199,14 @@
   "depositTo": "Deposit to",
   "withdrawFrom": "Withdraw from",
   "currentBalance": "Current Balance",
-  "currency": "Currency"
+  "currency": "Currency",
+  "temporarySubmit": "Temporary Submit",
+  "temporaryDocuments": "Temporary Documents",
+  "temporaryDocDescription": "List of temporary documents to be registered under the main document",
+  "delete": "Delete",
+  "customerMismatchError": "All temporary documents must belong to the same customer. Please clear the list or continue with the same customer.",
+  "confirmDeleteTemporary": "Are you sure you want to remove this temporary document?",
+  "finalizeSubmission": "Finalize Submission",
+  "temporaryListEmpty": "No temporary documents",
+  "items": "items"
 }

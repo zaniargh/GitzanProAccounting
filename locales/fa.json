@@ -117,6 +117,7 @@
   "unitPriceUSD": "قیمت واحد (دلار/تن)",
   "pricePerTon": "قیمت هر تن",
   "totalAmountUSD": "مبلغ کل (دلار)",
+  "totalAmount": "مبلغ کل",
   "amountUSD": "مبلغ (دلار)",
   "amount": "مبلغ",
   "descriptionOptional": "توضیحات (اختیاری)",
@@ -199,5 +200,14 @@
   "depositTo": "واریز به",
   "withdrawFrom": "برداشت از",
   "currentBalance": "موجودی فعلی",
-  "currency": "ارز"
+  "currency": "ارز",
+  "temporarySubmit": "ثبت موقت",
+  "temporaryDocuments": "اسناد موقت",
+  "temporaryDocDescription": "لیست اسناد موقت جهت ثبت در زیر سند اصلی",
+  "delete": "حذف",
+  "customerMismatchError": "تمام اسناد موقت باید متعلق به یک مشتری باشند. لطفاً لیست را خالی کنید یا با همان مشتری ادامه دهید.",
+  "confirmDeleteTemporary": "آیا از حذف این سند موقت اطمینان دارید؟",
+  "finalizeSubmission": "ثبت نهایی",
+  "temporaryListEmpty": "هیچ سند موقتی وجود ندارد",
+  "items": "مورد"
 }

@@ -596,7 +596,26 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
   const handleDelete = (transaction: Transaction) => {
     if (confirm(`آیا از حذف سند شماره ${transaction.documentNumber || transaction.id} اطمینان دارید؟`)) {
-      const updatedTransactions = data.transactions.filter((t) => t.id !== transaction.id)
+      let transactionsToDelete = [transaction.id]
+
+      // اگر سند اصلی است، تمام زیرسندهای آن را هم حذف کن
+      if (transaction.isMainDocument) {
+        const subDocs = data.transactions.filter(t => t.parentDocumentId === transaction.id)
+        subDocs.forEach(sub => transactionsToDelete.push(sub.id))
+      }
+
+      // اگر تراکنش مرتبط دارد (روش قدیمی)، آن را هم حذف کن
+      if (transaction.linkedTransactionId) {
+        transactionsToDelete.push(transaction.linkedTransactionId)
+      }
+
+      // اگر خود این سند یک زیرسند است، شاید بهتر باشد سند اصلی آن هم حذف شود؟
+      // فعلاً فقط خودش را حذف می‌کنیم، اما اگر منطق سیستم این است که زیرسند بدون سند اصلی معنا ندارد، باید بررسی شود.
+      // اما چون کاربر ممکن است بخواهد فقط یک ردیف را حذف کند، همین کافی است.
+      // نکته: در سیستم جدید، معمولاً کاربر با سند اصلی کار دارد.
+
+      const updatedTransactions = data.transactions.filter((t) => !transactionsToDelete.includes(t.id))
+
       onDataChange({
         ...data,
         transactions: updatedTransactions,

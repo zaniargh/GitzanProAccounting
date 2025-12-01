@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, DollarSign } from "lucide-react"
+import { Package, DollarSign, Trash2 } from "lucide-react"
 import type { Transaction, AppData, TransactionType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import type { ProductType } from "@/types"
@@ -26,8 +26,31 @@ interface TransactionFormProps {
 
 const generateDocumentNumber = (transactions: Transaction[]): string => {
   const currentYear = new Date().getFullYear()
-  const yearTransactions = transactions.filter((t) => new Date(t.createdAt).getFullYear() === currentYear)
-  const nextNumber = yearTransactions.length + 1
+
+  // فقط Main Documents رو بگیر (یا اسنادی که parentDocumentId ندارند)
+  const mainDocuments = transactions.filter((t) => !t.parentDocumentId)
+
+  // از بین Main Documents فقط اونایی که سال جاریند
+  const yearMainDocs = mainDocuments.filter((t) => {
+    const docYear = t.documentNumber?.split('-')[0]
+    return docYear === currentYear.toString()
+  })
+
+  // بیشترین شماره رو پیدا کن
+  let maxNumber = 0
+  yearMainDocs.forEach((t) => {
+    if (t.documentNumber) {
+      const parts = t.documentNumber.split('-')
+      if (parts.length >= 2) {
+        const num = parseInt(parts[1])
+        if (!isNaN(num) && num > maxNumber) {
+          maxNumber = num
+        }
+      }
+    }
+  })
+
+  const nextNumber = maxNumber + 1
   return `${currentYear}-${nextNumber.toString().padStart(4, "0")}`
 }
 
@@ -62,6 +85,11 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     weightUnit: data.settings?.baseWeightUnit || "ton",
     accountId: "default-cash-safe", // حساب نقدی (Cash Safe یا Bank Account)
   })
+
+  const [temporaryTransactions, setTemporaryTransactions] = useLocalStorageGeneric<Transaction[]>("temp-transactions", [])
+
+  // محاسبه شماره سند بعدی
+  const nextDocumentNumber = editingTransaction?.documentNumber || generateDocumentNumber(data.transactions)
 
   // Update local state when global settings change (if needed, or just initialize)
   useEffect(() => {
@@ -104,6 +132,95 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     })
 
     window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handleTemporarySubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setValidationError("")
+
+    // Validation: Customer must be selected
+    if (!formData.customerId) {
+      setValidationError(t("selectCustomerRequired"))
+      return
+    }
+
+    // Check if customer matches existing temporary transactions
+    if (temporaryTransactions.length > 0) {
+      const firstTemp = temporaryTransactions[0]
+      if (firstTemp.customerId !== formData.customerId) {
+        setValidationError(t("customerMismatchError"))
+        return
+      }
+    }
+
+    // Basic form validation (similar to handleSubmit)
+    if (formData.type === "product_in" || formData.type === "product_out") {
+      const hasQuantity = formData.quantity && formData.quantity.trim() !== ""
+      const hasWeight = formData.weight && formData.weight.trim() !== ""
+      if (!hasQuantity && !hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+      if (hasQuantity && hasWeight) {
+        setValidationError(t("quantityOrWeightRequired"))
+        return
+      }
+    }
+
+    if (isFlourTransaction && !formData.productTypeId) {
+      setValidationError(t("productTypeRequired"))
+      return
+    }
+
+    // Calculate amount if needed
+    let totalAmount = 0
+    if (formData.type === "product_purchase" || formData.type === "product_sale") {
+      if (formData.weight && formData.unitPrice) {
+        totalAmount = Number.parseFloat(formData.weight) * Number.parseFloat(formData.unitPrice)
+      } else if (formData.quantity && formData.unitPrice) {
+        totalAmount = Number.parseInt(formData.quantity) * Number.parseFloat(formData.unitPrice)
+      }
+    } else if (["cash_in", "cash_out", "expense", "income"].includes(formData.type)) {
+      totalAmount = Number.parseFloat(formData.amount)
+    }
+
+    const tempTransaction: Transaction = {
+      id: crypto.randomUUID(),
+      documentNumber: `${nextDocumentNumber}-${temporaryTransactions.length + 1}`, // Temporary number
+      type: formData.type,
+      customerId: formData.customerId,
+      amount: totalAmount,
+      weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
+      quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
+      unitPrice: formData.unitPrice ? Number.parseFloat(formData.unitPrice) : undefined,
+      productTypeId: formData.productTypeId || undefined,
+      description: formData.description,
+      date: formData.date,
+      createdAt: getLocalDateTime(),
+      currencyId: formData.currencyId,
+      weightUnit: formData.weightUnit,
+      accountId: formData.accountId,
+    }
+
+    setTemporaryTransactions([...temporaryTransactions, tempTransaction])
+
+    // Clear form but keep customer and date
+    setFormData({
+      ...formData,
+      amount: "",
+      weight: "",
+      quantity: "",
+      unitPrice: "",
+      productTypeId: "",
+      description: "",
+      // Keep customerId, date, currencyId, weightUnit, accountId
+    })
+  }
+
+  const handleDeleteTemporary = (id: string) => {
+    if (confirm(t("confirmDeleteTemporary"))) {
+      setTemporaryTransactions(temporaryTransactions.filter(t => t.id !== id))
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -257,7 +374,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                 type: formData.type,
                 customerId: formData.accountId || "default-cash-safe",
                 amount: formData.type === "cash_in" ? totalAmount : -totalAmount, // مبلغ مثبت/منفی
-                description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
+                description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName} ${formData.type === "cash_in" ? (lang === "fa" ? "از" : "from") : (lang === "fa" ? "به" : "to")} ${customerName}`,
                 date: formData.date,
                 currencyId: formData.currencyId,
                 accountId: formData.accountId || "default-cash-safe",
@@ -288,7 +405,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               ...transaction,
               type: accountType, // نوع یکسان
               amount: totalAmount, // مبلغ جدید
-              description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
+              description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName} ${formData.type === "cash_in" ? (lang === "fa" ? "از" : "from") : (lang === "fa" ? "به" : "to")} ${customerName}`,
               date: formData.date, // تاریخ جدید
               currencyId: formData.currencyId, // ارز جدید
               customerId: formData.accountId, // حساب انتخابی
@@ -347,6 +464,63 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       })
       setEditingTransaction(null)
     } else {
+      // Check for temporary transactions first
+      if (temporaryTransactions.length > 0) {
+        const mainDocId = crypto.randomUUID()
+        const mainDocNumber = generateDocumentNumber(data.transactions)
+        const customerName = getCustomerName(temporaryTransactions[0].customerId)
+        const mainType = temporaryTransactions[0].type
+
+        // Calculate total amount if possible (only if all are same currency and type)
+        // For now, we set 0 for summary or maybe sum if simple.
+        // Let's keep it 0 for the main document to avoid confusion, or maybe sum if they are all cash.
+        // The user didn't specify, but usually main doc shows summary.
+        // Let's just use 0 and description.
+
+        const mainDocument: Transaction = {
+          id: mainDocId,
+          documentNumber: mainDocNumber,
+          type: mainType,
+          customerId: temporaryTransactions[0].customerId,
+          amount: 0,
+          description: `${t("temporaryDocuments")} - ${customerName} (${temporaryTransactions.length} ${t("items")})`,
+          date: formData.date,
+          createdAt: getLocalDateTime(),
+          currencyId: temporaryTransactions[0].currencyId,
+          weightUnit: temporaryTransactions[0].weightUnit,
+          accountId: "default-cash-safe",
+          isMainDocument: true,
+        }
+
+        const subDocuments = temporaryTransactions.map((temp, index) => ({
+          ...temp,
+          id: crypto.randomUUID(), // New ID for permanent storage
+          documentNumber: `${mainDocNumber}-${index + 1}`,
+          parentDocumentId: mainDocId,
+          isMainDocument: false,
+          date: formData.date, // Sync date with main doc
+          createdAt: getLocalDateTime(),
+        }))
+
+        onDataChange({
+          ...data,
+          transactions: [...data.transactions, mainDocument, ...subDocuments],
+        })
+        setTemporaryTransactions([])
+
+        setFormData({
+          ...formData,
+          amount: "",
+          weight: "",
+          quantity: "",
+          unitPrice: "",
+          productTypeId: "",
+          description: "",
+        })
+        setValidationError("")
+        return
+      }
+
       const newTransaction: Transaction = {
         id: crypto.randomUUID(),
         documentNumber: generateDocumentNumber(data.transactions),
@@ -422,7 +596,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           type: formData.type,
           customerId: targetAccountId,
           amount: formData.type === "cash_in" ? totalAmount : -totalAmount,
-          description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName}`,
+          description: `${formData.type === "cash_in" ? (lang === "fa" ? "واریز به" : "Deposit to") : (lang === "fa" ? "برداشت از" : "Withdrawal from")} ${accountName} ${formData.type === "cash_in" ? (lang === "fa" ? "از" : "from") : (lang === "fa" ? "به" : "to")} ${customerName}`,
           date: formData.date,
           createdAt: getLocalDateTime(),
           currencyId: formData.currencyId,
@@ -590,7 +764,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
           <div>
             <Label>{t("baseCurrency")}</Label>
             <Select
@@ -644,309 +818,390 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           </div>
         </div>
 
-        <Tabs
-          value={formData.type}
-          onValueChange={(value) => setFormData({ ...formData, type: value as TransactionType, customerId: "" })}
-        >
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-8 gap-1">
-            {transactionTypes.map((type) => {
-              const Icon = type.icon
-              return (
-                <TabsTrigger key={type.value} value={type.value} className="flex items-center gap-1 px-2 py-1">
-                  <Icon className="h-3 w-3 shrink-0" />
-                  <span className="hidden md:inline text-xs truncate">{type.label}</span>
-                </TabsTrigger>
-              )
-            })}
-          </TabsList>
+        <form onSubmit={handleSubmit}>
+          {/* Customer, Date & Document Number - Above Tabs */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+            <div>
+              <Label htmlFor="customer" className="text-xs mb-0.5 block">{formData.type === "expense" ? t("expenseType") : t("customer")}</Label>
+              <SearchableSelect
+                value={formData.customerId}
+                onValueChange={(value) => setFormData({ ...formData, customerId: value })}
+                options={getFilteredCustomers().map((customer) => {
+                  let displayName = customer.name
+                  if (customer.id === "default-cash-safe") {
+                    displayName = lang === "fa" ? "صندوق" : "Cash Box"
+                  } else if (customer.id === "default-warehouse") {
+                    displayName = lang === "fa" ? "موجودی" : "Inventory"
+                  }
+                  const code = customer.customerCode ? `${customer.customerCode} - ` : ""
+                  const label = customer.phone !== "هزینه" ? `${code}${displayName}` : displayName
+                  return {
+                    value: customer.id,
+                    label: label,
+                    keywords: [customer.customerCode || "", displayName, customer.phone, label]
+                  }
+                })}
+                placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")}
+                searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
+                emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
+                className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
+              />
+            </div>
 
-          {transactionTypes.map((type) => (
-            <TabsContent key={type.value} value={type.value}>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                  {/* Customer Selection - Spans 4 columns */}
-                  <div className="md:col-span-4">
-                    <Label htmlFor="customer" className="text-xs mb-1 block">{formData.type === "expense" ? t("expenseType") : t("customer")}</Label>
+            <div>
+              <Label htmlFor="date" className="text-xs mb-0.5 block">{t("dateTime")}</Label>
+              <Input
+                id="date"
+                type="datetime-local"
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="text-right h-9 text-sm"
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="documentNumber" className="text-xs mb-0.5 block">{lang === "fa" ? "شماره سند" : "Document Number"}</Label>
+              <Input
+                id="documentNumber"
+                type="text"
+                value={nextDocumentNumber}
+                readOnly
+                className="text-center h-9 text-sm bg-muted font-mono font-semibold"
+                title={lang === "fa" ? "شماره سند به صورت خودکار تولید می‌شود" : "Document number is auto-generated"}
+              />
+            </div>
+          </div>
+
+          <Tabs
+            value={formData.type}
+            onValueChange={(value) => setFormData({ ...formData, type: value as TransactionType, customerId: "" })}
+            className="mb-2"
+          >
+            <TabsList className="flex flex-wrap w-full h-auto gap-1">
+              {transactionTypes.map((type) => {
+                const Icon = type.icon
+                return (
+                  <TabsTrigger key={type.value} value={type.value} className="flex items-center gap-1 px-2 py-1">
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="text-xs whitespace-nowrap">{type.label}</span>
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </Tabs>
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              {/* Amount - Spans 3 columns (if applicable) */}
+              {(formData.type === "cash_in" || formData.type === "cash_out" || formData.type === "expense" || formData.type === "income") && (
+                <div className="md:col-span-3">
+                  <Label htmlFor="amount" className="text-xs mb-1 block">{t("amount")}</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="text-right h-9 text-sm"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Account Selector - Spans 2 columns (if applicable) */}
+              {(formData.type === "cash_in" || formData.type === "cash_out") && (
+                <div className="md:col-span-2">
+                  <Label htmlFor="accountId" className="text-xs mb-1 block">
+                    {formData.type === "cash_in" ? t("depositTo") : t("withdrawFrom")}
+                  </Label>
+                  <SearchableSelect
+                    value={formData.accountId}
+                    onValueChange={(value) => setFormData({ ...formData, accountId: value })}
+                    options={[
+                      { value: "default-cash-safe", label: lang === "fa" ? "صندوق" : "Cash Box" },
+                      ...(data.bankAccounts || []).map((account) => ({
+                        value: account.id,
+                        label: `${account.bankName} - ${account.accountNumber}`
+                      }))
+                    ]}
+                    placeholder={t("selectCashAccount")}
+                    searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
+                    emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
+                    className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
+                  />
+                </div>
+              )}
+
+              {/* Product Fields */}
+              {isFlourTransaction && (
+                <>
+                  <div className="md:col-span-3">
+                    <Label htmlFor="productType" className="text-xs mb-1 block">{t("productType")}</Label>
                     <SearchableSelect
-                      value={formData.customerId}
-                      onValueChange={(value) => setFormData({ ...formData, customerId: value })}
-                      options={getFilteredCustomers().map((customer) => {
-                        let displayName = customer.name
-                        if (customer.id === "default-cash-safe") {
-                          displayName = lang === "fa" ? "صندوق" : "Cash Box"
-                        } else if (customer.id === "default-warehouse") {
-                          displayName = lang === "fa" ? "موجودی" : "Inventory"
+                      value={formData.productTypeId}
+                      onValueChange={(value) => {
+                        const selectedProduct = productTypes.find(f => f.id === value)
+                        const updates: any = { productTypeId: value }
+                        if (selectedProduct?.measurementType === "quantity") {
+                          updates.weight = ""
+                        } else if (selectedProduct?.measurementType === "weight") {
+                          updates.quantity = ""
                         }
-                        const code = customer.customerCode ? `${customer.customerCode} - ` : ""
-                        const label = customer.phone !== "هزینه" ? `${code}${displayName}` : displayName
+                        setFormData({ ...formData, ...updates })
+                      }}
+                      options={productTypes.map((productType) => {
+                        const code = productType.productCode ? `${productType.productCode} - ` : ""
+                        const label = `${code}${productType.name}`
                         return {
-                          value: customer.id,
+                          value: productType.id,
                           label: label,
-                          keywords: [customer.customerCode || "", displayName, customer.phone, label]
+                          keywords: [productType.productCode || "", productType.name, label]
                         }
                       })}
-                      placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")}
+                      placeholder={t("selectProductType")}
                       searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
                       emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
                       className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
                     />
                   </div>
 
-                  {/* Date - Spans 3 columns */}
-                  <div className="md:col-span-3">
-                    <Label htmlFor="date" className="text-xs mb-1 block">{t("dateTime")}</Label>
-                    <Input
-                      id="date"
-                      type="datetime-local"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="text-right h-9 text-sm"
-                      required
-                    />
-                  </div>
+                  {(() => {
+                    const selectedProduct = productTypes.find(p => p.id === formData.productTypeId)
+                    const isQuantity = selectedProduct?.measurementType === "quantity"
+                    const isWeight = selectedProduct?.measurementType === "weight" || !selectedProduct
 
-                  {/* Amount - Spans 3 columns (if applicable) */}
-                  {(formData.type === "cash_in" || formData.type === "cash_out" || formData.type === "expense" || formData.type === "income") && (
-                    <div className="md:col-span-3">
-                      <Label htmlFor="amount" className="text-xs mb-1 block">{t("amount")}</Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        step="0.01"
-                        value={formData.amount}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                        className="text-right h-9 text-sm"
-                        required
-                      />
-                    </div>
-                  )}
-
-                  {/* Account Selector - Spans 2 columns (if applicable) */}
-                  {(formData.type === "cash_in" || formData.type === "cash_out") && (
-                    <div className="md:col-span-2">
-                      <Label htmlFor="accountId" className="text-xs mb-1 block">
-                        {formData.type === "cash_in" ? t("depositTo") : t("withdrawFrom")}
-                      </Label>
-                      <SearchableSelect
-                        value={formData.accountId}
-                        onValueChange={(value) => setFormData({ ...formData, accountId: value })}
-                        options={[
-                          { value: "default-cash-safe", label: lang === "fa" ? "صندوق" : "Cash Box" },
-                          ...(data.bankAccounts || []).map((account) => ({
-                            value: account.id,
-                            label: `${account.bankName} - ${account.accountNumber}`
-                          }))
-                        ]}
-                        placeholder={t("selectCashAccount")}
-                        searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
-                        emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
-                        className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
-                      />
-                    </div>
-                  )}
-
-                  {/* Product Fields */}
-                  {isFlourTransaction && (
-                    <>
-                      <div className="md:col-span-3">
-                        <Label htmlFor="productType" className="text-xs mb-1 block">{t("productType")}</Label>
-                        <Select
-                          value={formData.productTypeId}
-                          onValueChange={(value) => {
-                            const selectedProduct = productTypes.find(f => f.id === value)
-                            const updates: any = { productTypeId: value }
-                            if (selectedProduct?.measurementType === "quantity") {
-                              updates.weight = ""
-                            } else if (selectedProduct?.measurementType === "weight") {
-                              updates.quantity = ""
-                            }
-                            setFormData({ ...formData, ...updates })
-                          }}
-                        >
-                          <SelectTrigger className={`h-9 text-sm ${lang === "fa" ? "text-right" : "text-left"}`} dir={lang === "fa" ? "rtl" : "ltr"}>
-                            <SelectValue placeholder={t("selectProductType")} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {productTypes.map((productType) => (
-                              <SelectItem key={productType.id} value={productType.id}>
-                                {productType.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {(() => {
-                        const selectedProduct = productTypes.find(p => p.id === formData.productTypeId)
-                        const isQuantity = selectedProduct?.measurementType === "quantity"
-                        const isWeight = selectedProduct?.measurementType === "weight" || !selectedProduct
-
-                        return (
-                          <>
-                            {isWeight && (
-                              <div className="md:col-span-2">
-                                <Label htmlFor="weight" className="text-xs mb-1 block">{t("weight")}</Label>
-                                <Input
-                                  id="weight"
-                                  type="number"
-                                  step="0.001"
-                                  value={formData.weight}
-                                  onChange={(e) => {
-                                    const weight = e.target.value
-                                    setFormData(prev => {
-                                      const newData = { ...prev, weight }
-                                      if (weight && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
-                                        const weightNum = Number.parseFloat(weight)
-                                        const priceNum = Number.parseFloat(prev.unitPrice)
-                                        if (!isNaN(weightNum) && !isNaN(priceNum)) {
-                                          newData.amount = (weightNum * priceNum).toString()
-                                        }
-                                      }
-                                      return newData
-                                    })
-                                  }}
-                                  className="text-right h-9 text-sm"
-                                  placeholder={t("weightPlaceholder")}
-                                />
-                              </div>
-                            )}
-                            {isQuantity && (
-                              <div className="md:col-span-2">
-                                <Label htmlFor="quantity" className="text-xs mb-1 block">{t("quantity")}</Label>
-                                <Input
-                                  id="quantity"
-                                  type="number"
-                                  step="1"
-                                  value={formData.quantity}
-                                  onChange={(e) => {
-                                    const quantity = e.target.value
-                                    setFormData(prev => {
-                                      const newData = { ...prev, quantity }
-                                      if (quantity && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
-                                        const qtyNum = Number.parseInt(quantity)
-                                        const priceNum = Number.parseFloat(prev.unitPrice)
-                                        if (!isNaN(qtyNum) && !isNaN(priceNum)) {
-                                          newData.amount = (qtyNum * priceNum).toString()
-                                        }
-                                      }
-                                      return newData
-                                    })
-                                  }}
-                                  className="text-right h-9 text-sm"
-                                  placeholder={t("quantityPlaceholder")}
-                                />
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-
-                      {(formData.type === "product_purchase" || formData.type === "product_sale") && (
-                        <div className="md:col-span-3">
-                          <Label htmlFor="unitPrice" className="text-xs mb-1 block">{t("unitPrice")}</Label>
-                          <div className="relative">
+                    return (
+                      <>
+                        {isWeight && (
+                          <div className="md:col-span-2">
+                            <Label htmlFor="weight" className="text-xs mb-1 block">{t("weight")}</Label>
                             <Input
-                              id="unitPrice"
+                              id="weight"
                               type="number"
-                              step="0.01"
-                              value={formData.unitPrice}
+                              step="0.001"
+                              value={formData.weight}
                               onChange={(e) => {
-                                const unitPrice = e.target.value
+                                const weight = e.target.value
                                 setFormData(prev => {
-                                  const newData = { ...prev, unitPrice }
-                                  if (unitPrice) {
-                                    const priceNum = Number.parseFloat(unitPrice)
-                                    if (!isNaN(priceNum)) {
-                                      let total = 0
-                                      if (prev.weight) {
-                                        const weightNum = Number.parseFloat(prev.weight)
-                                        if (!isNaN(weightNum)) total = weightNum * priceNum
-                                      } else if (prev.quantity) {
-                                        const qtyNum = Number.parseInt(prev.quantity)
-                                        if (!isNaN(qtyNum)) total = qtyNum * priceNum
-                                      }
-                                      if (total > 0) newData.amount = total.toString()
+                                  const newData = { ...prev, weight }
+                                  if (weight && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
+                                    const weightNum = Number.parseFloat(weight)
+                                    const priceNum = Number.parseFloat(prev.unitPrice)
+                                    if (!isNaN(weightNum) && !isNaN(priceNum)) {
+                                      newData.amount = (weightNum * priceNum).toString()
                                     }
                                   }
                                   return newData
                                 })
                               }}
-                              className="text-right h-9 text-sm pl-8"
-                              placeholder="0.00"
+                              className="text-right h-9 text-sm"
+                              placeholder={t("weightPlaceholder")}
                             />
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
-                              {data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}
-                            </div>
                           </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                        )}
+                        {isQuantity && (
+                          <div className="md:col-span-2">
+                            <Label htmlFor="quantity" className="text-xs mb-1 block">{t("quantity")}</Label>
+                            <Input
+                              id="quantity"
+                              type="number"
+                              step="1"
+                              value={formData.quantity}
+                              onChange={(e) => {
+                                const quantity = e.target.value
+                                setFormData(prev => {
+                                  const newData = { ...prev, quantity }
+                                  if (quantity && prev.unitPrice && (prev.type === "product_purchase" || prev.type === "product_sale")) {
+                                    const qtyNum = Number.parseInt(quantity)
+                                    const priceNum = Number.parseFloat(prev.unitPrice)
+                                    if (!isNaN(qtyNum) && !isNaN(priceNum)) {
+                                      newData.amount = (qtyNum * priceNum).toString()
+                                    }
+                                  }
+                                  return newData
+                                })
+                              }}
+                              className="text-right h-9 text-sm"
+                              placeholder={t("quantityPlaceholder")}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
 
-                  {(formData.type === "product_purchase" ||
-                    formData.type === "product_sale" ||
-                    formData.type === "expense" ||
-                    formData.type === "income") && (
-                      <div className={isFlourTransaction ? "md:col-span-2" : "md:col-span-3"}>
-                        <Label htmlFor="amount" className="text-xs mb-1 block">
-                          {formData.type === "product_purchase" || formData.type === "product_sale"
-                            ? `${t("totalAmountUSD")} (${data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"})`
-                            : `${t("amountUSD")} (${data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"})`}
-                        </Label>
+                  {(formData.type === "product_purchase" || formData.type === "product_sale") && (
+                    <div className="md:col-span-3">
+                      <Label htmlFor="unitPrice" className="text-xs mb-1 block">{t("unitPrice")}</Label>
+                      <div className="relative">
                         <Input
-                          id="amount"
+                          id="unitPrice"
                           type="number"
                           step="0.01"
-                          value={formData.amount}
-                          onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                          className="text-right h-9 text-sm"
-                          required
-                          readOnly={
-                            (formData.type === "product_purchase" || formData.type === "product_sale") &&
-                            (!!formData.weight || !!formData.quantity) &&
-                            !!formData.unitPrice
-                          }
+                          value={formData.unitPrice}
+                          onChange={(e) => {
+                            const unitPrice = e.target.value
+                            setFormData(prev => {
+                              const newData = { ...prev, unitPrice }
+                              if (unitPrice) {
+                                const priceNum = Number.parseFloat(unitPrice)
+                                if (!isNaN(priceNum)) {
+                                  let total = 0
+                                  if (prev.weight) {
+                                    const weightNum = Number.parseFloat(prev.weight)
+                                    if (!isNaN(weightNum)) total = weightNum * priceNum
+                                  } else if (prev.quantity) {
+                                    const qtyNum = Number.parseInt(prev.quantity)
+                                    if (!isNaN(qtyNum)) total = qtyNum * priceNum
+                                  }
+                                  if (total > 0) newData.amount = total.toString()
+                                }
+                              }
+                              return newData
+                            })
+                          }}
+                          className="text-right h-9 text-sm pl-8"
+                          placeholder="0.00"
                         />
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
+                          {data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}
+                        </div>
                       </div>
-                    )}
-                </div>
+                    </div>
+                  )}
+                </>
+              )}
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div className="md:col-span-12">
-                    <Label htmlFor="description" className="text-xs mb-1 block">{t("descriptionOptional")}</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="text-right h-16 text-sm resize-none"
-                      placeholder={t("descriptionPlaceholder")}
+              {(formData.type === "product_purchase" ||
+                formData.type === "product_sale" ||
+                formData.type === "expense" ||
+                formData.type === "income") && (
+                  <div className={isFlourTransaction ? "md:col-span-2" : "md:col-span-3"}>
+                    <Label htmlFor="amount" className="text-xs mb-1 block">
+                      {formData.type === "product_purchase" || formData.type === "product_sale"
+                        ? `${t("totalAmount")} (${data.currencies?.find(c => c.id === formData.currencyId)?.name || "Currency"})`
+                        : `${t("amount")} (${data.currencies?.find(c => c.id === formData.currencyId)?.name || "Currency"})`}
+                    </Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      className="text-right h-9 text-sm"
+                      required
+                      readOnly={
+                        (formData.type === "product_purchase" || formData.type === "product_sale") &&
+                        (!!formData.weight || !!formData.quantity) &&
+                        !!formData.unitPrice
+                      }
                     />
                   </div>
-                </div>
-
-                {validationError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-                    <span className="block sm:inline">{validationError}</span>
-                  </div>
                 )}
+            </div>
 
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
-                >
-                  {data.customers.length === 0
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="md:col-span-12">
+                <Label htmlFor="description" className="text-xs mb-1 block">{t("descriptionOptional")}</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="text-right h-16 text-sm resize-none"
+                  placeholder={t("descriptionPlaceholder")}
+                />
+              </div>
+            </div>
+
+            {validationError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <span className="block sm:inline">{validationError}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={handleTemporarySubmit}
+                disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
+              >
+                {t("temporarySubmit")}
+              </Button>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
+              >
+                {temporaryTransactions.length > 0
+                  ? t("finalizeSubmission")
+                  : data.customers.length === 0
                     ? t("defineCustomerFirst")
                     : isFlourTransaction && productTypes.length === 0
                       ? t("defineProductTypeFirst")
                       : editingTransaction
                         ? t("updateDocument")
                         : t("submitDocument")}
-                </Button>
-              </form>
-            </TabsContent>
-          ))}
-        </Tabs>
+              </Button>
+            </div>
+
+            {/* Temporary Documents Table */}
+            {temporaryTransactions.length > 0 && (
+              <div className="mt-6 border rounded-md overflow-hidden">
+                <div className="bg-muted px-4 py-2 font-semibold text-sm flex justify-between items-center">
+                  <span>{t("temporaryDocuments")}</span>
+                  <span className="text-xs font-normal text-muted-foreground">{t("temporaryDocDescription")}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-right">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="p-2">{t("documentNumber")}</th>
+                        <th className="p-2">{t("type")}</th>
+                        <th className="p-2">{t("customer")}</th>
+                        <th className="p-2">{t("amount")} / {t("weight")}</th>
+                        <th className="p-2">{t("description")}</th>
+                        <th className="p-2">{t("actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {temporaryTransactions.map((tx) => (
+                        <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20">
+                          <td className="p-2 font-mono">{tx.documentNumber}</td>
+                          <td className="p-2">
+                            {transactionTypes.find(t => t.value === tx.type)?.label}
+                          </td>
+                          <td className="p-2">{getCustomerName(tx.customerId)}</td>
+                          <td className="p-2">
+                            {tx.weight ? `${tx.weight} ${t(tx.weightUnit || "ton")}` :
+                              tx.quantity ? `${tx.quantity} ${t("unit")}` :
+                                tx.amount.toLocaleString()}
+                          </td>
+                          <td className="p-2 max-w-[200px] truncate" title={tx.description}>
+                            {tx.description}
+                          </td>
+                          <td className="p-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteTemporary(tx.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </form>
       </Card>
 
       <div>
