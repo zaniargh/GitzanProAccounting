@@ -153,9 +153,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
     switch (type) {
       case "product_in":
-        return { label: t("productIn"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowDown }
+        return { label: t("productIn"), icon: Package, color: "bg-red-100 text-red-800", arrow: ArrowDown }
       case "product_out":
-        return { label: t("productOut"), icon: Package, color: "bg-red-100 text-red-800", arrow: ArrowUp }
+        return { label: t("productOut"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowUp }
       case "product_purchase":
         return { label: t("productPurchase"), icon: Package, color: "bg-blue-100 text-blue-800", arrow: ArrowDown }
       case "product_sale":
@@ -563,353 +563,522 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         </div>
       </div>
 
-      <Card>
-        <Table className="text-xs">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("documentNumber")}
-                >
-                  {t("documentNumber")}
-                  {getSortIcon("documentNumber")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("type")}
-                >
-                  {t("type")}
-                  {getSortIcon("type")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("customer")}
-                >
-                  {t("customer")}
-                  {getSortIcon("customer")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("productType")}
-                >
-                  {t("productType")}
-                  {getSortIcon("productType")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("quantity")}
-                >
-                  {t("quantity")}
-                  {getSortIcon("quantity")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("weight")}
-                >
-                  {t("weight")}
-                  {getSortIcon("weight")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("unitPrice")}
-                >
-                  {t("unitPrice")}
-                  {getSortIcon("unitPrice")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("amount")}
-                >
-                  {t("amount")}
-                  {getSortIcon("amount")}
-                </Button>
-              </TableHead>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
+                    onClick={() => handleSort("documentNumber")}
+                  >
+                    {t("documentNumber")}
+                    {getSortIcon("documentNumber")}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
+                    onClick={() => handleSort("type")}
+                  >
+                    {t("type")}
+                    {getSortIcon("type")}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
+                    onClick={() => handleSort("customer")}
+                  >
+                    {t("customer")}
+                    {getSortIcon("customer")}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
+                    onClick={() => handleSort("productType")}
+                  >
+                    {t("productType")}
+                    {getSortIcon("productType")}
+                  </Button>
+                </TableHead>
 
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("date")}
-                >
-                  {t("date")}
-                  {getSortIcon("date")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2">
-                <Button
-                  variant="ghost"
-                  className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
-                  onClick={() => handleSort("description")}
-                >
+                {/* Goods Section Header */}
+                <TableHead className="text-center text-xs p-1 h-auto border-r border-b bg-blue-50/50" colSpan={4}>
+                  <span className="font-bold text-blue-700">{t("goodsSection")}</span>
+                </TableHead>
+
+                {/* Money Section Header */}
+                <TableHead className="text-center text-xs p-1 h-auto border-r border-b bg-green-50/50" colSpan={4}>
+                  <span className="font-bold text-green-700">{t("moneySection")}</span>
+                </TableHead>
+
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  <Button
+                    variant="ghost"
+                    className="h-auto p-0 font-semibold hover:bg-transparent text-xs"
+                    onClick={() => handleSort("date")}
+                  >
+                    {t("date")}
+                    {getSortIcon("date")}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
                   {t("description")}
-                  {getSortIcon("description")}
-                </Button>
-              </TableHead>
-              <TableHead className="text-center text-xs p-2 w-[80px]">{t("operations")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedTransactions.map((transaction) => {
-              const typeInfo = getTransactionTypeInfo(transaction)
-              const Icon = typeInfo.icon
-              const Arrow = typeInfo.arrow
-              const subdocuments = getSubdocuments(transaction.id)
-              const hasSubdocs = subdocuments.length > 0
-              const isExpanded = expandedDocs.has(transaction.id)
+                </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto sticky right-0 bg-background z-20 shadow-[-2px_0_5px_rgba(0,0,0,0.1)]" rowSpan={2}>
+                  {t("operations")}
+                </TableHead>
+              </TableRow>
 
-              const renderRow = (trans: Transaction, isSubdoc = false) => (
-                <TableRow key={trans.id} className={isSubdoc ? "bg-muted/30" : ""}>
-                  <TableCell className={`text-center font-mono p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
-                    <div className="flex items-center justify-center gap-1">
-                      {!isSubdoc && hasSubdocs && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0"
-                          onClick={() => toggleExpand(trans.id)}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-3 w-3" />
-                          ) : (
-                            <ChevronRight className="h-3 w-3" />
-                          )}
-                        </Button>
-                      )}
-                      {isSubdoc && <span className="text-muted-foreground mr-4">└</span>}
-                      <span>{trans.documentNumber || "-"}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center p-2">
-                    <Badge className={`${getTransactionTypeInfo(trans).color} ${isSubdoc ? "text-[8px]" : "text-[9px]"} px-1 py-0`}>
-                      {getTransactionTypeInfo(trans).label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className={`text-center p-2 max-w-[100px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    {(() => {
-                      const customer = data.customers.find((c) => c.id === trans.customerId)
-                      let content: React.ReactNode = t("unknown")
-                      let text = t("unknown")
+              {/* Sub-headers Row */}
+              <TableRow className="bg-muted/50">
+                {/* Goods Sub-headers */}
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colIn")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colOut")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colTalab")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colBedehi")}</TableHead>
 
-                      if (customer) {
-                        if (customer.id === "default-cash-safe") {
-                          content = (
-                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 whitespace-nowrap">
-                              {lang === "fa" ? "صندوق" : "Cash Box"}
-                            </Badge>
-                          )
-                          text = lang === "fa" ? "صندوق" : "Cash Box"
-                        } else if (customer.id === "default-warehouse") {
-                          text = lang === "fa" ? "موجودی" : "Inventory"
-                          content = (
-                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 whitespace-nowrap">
-                              {text}
-                            </Badge>
-                          )
-                        } else {
-                          content = customer.name
-                          text = customer.name
-                        }
-                      } else {
-                        const bankAccount = data.bankAccounts?.find((b) => b.id === trans.customerId)
-                        if (bankAccount) {
-                          text = `${bankAccount.bankName} - ${bankAccount.accountHolder}`
-                          content = (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 whitespace-nowrap">
-                              {text}
-                            </Badge>
-                          )
-                        }
-                      }
+                {/* Money Sub-headers */}
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colIn")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colOut")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colTalab")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colBedehi")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedTransactions.map((transaction) => {
+                const typeInfo = getTransactionTypeInfo(transaction)
+                const Icon = typeInfo.icon
+                const Arrow = typeInfo.arrow
+                const subdocuments = getSubdocuments(transaction.id)
+                const hasSubdocs = subdocuments.length > 0
+                const isExpanded = expandedDocs.has(transaction.id)
 
-                      return (
-                        <TruncatedTooltip text={text}>
-                          {content}
-                        </TruncatedTooltip>
-                      )
-                    })()}
-                  </TableCell>
-                  <TableCell className={`text-center p-2 max-w-[80px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    <TruncatedTooltip text={getProductTypeName(trans.productTypeId)}>
-                      {getProductTypeName(trans.productTypeId)}
-                    </TruncatedTooltip>
-                  </TableCell>
-                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    {trans.quantity ? (
-                      <span className={`font-medium ${getAmountClass(trans.quantity)}`}>
-                        {formatNumber(Math.abs(trans.quantity))}
-                      </span>
-                    ) : "-"}
-                  </TableCell>
-                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    {trans.weight ? (
-                      <span className={`font-medium ${getAmountClass(trans.weight)}`}>
-                        {displayWeightUnit === "original" ? (
-                          `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
-                        ) : (
-                          `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                const renderRow = (trans: Transaction, isSubdoc = false) => (
+                  <TableRow key={trans.id} className={isSubdoc ? "bg-muted/30" : ""}>
+                    <TableCell className={`text-center font-mono p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
+                      <div className="flex items-center justify-center gap-1">
+                        {!isSubdoc && hasSubdocs && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-4 w-4 p-0"
+                            onClick={() => toggleExpand(trans.id)}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-3 w-3" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3" />
+                            )}
+                          </Button>
                         )}
-                      </span>
-                    ) : "-"}
-                  </TableCell>
-                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    {(trans.unitPrice != null) ? `${formatNumber(trans.unitPrice)}`
-                      : ((trans.weight && trans.amount) ? `${formatNumber(trans.amount / trans.weight)}` : "-")}
-                  </TableCell>
-                  <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                    <span className={`font-bold ${getAmountClass(trans.amount)}`}>
-                      {formatNumber(Math.abs(trans.amount))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
-                    </span>
-                  </TableCell>
-                  <TableCell className={`text-center p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
-                    {lang === "fa" ? (
-                      <div>
-                        <div className="font-medium">
-                          {formatDate(trans.date || trans.createdAt || "").persian}
+                        {isSubdoc && <span className="text-muted-foreground mr-4">└</span>}
+                        <span>{trans.documentNumber || "-"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center p-2">
+                      <Badge className={`${getTransactionTypeInfo(trans).color} ${isSubdoc ? "text-[8px]" : "text-[9px]"} px-1 py-0`}>
+                        {getTransactionTypeInfo(trans).label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className={`text-center p-2 max-w-[100px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(() => {
+                        const customer = data.customers.find((c) => c.id === trans.customerId)
+                        let content: React.ReactNode = t("unknown")
+                        let text = t("unknown")
+
+                        if (customer) {
+                          if (customer.id === "default-cash-safe") {
+                            content = (
+                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 whitespace-nowrap">
+                                {lang === "fa" ? "صندوق" : "Cash Box"}
+                              </Badge>
+                            )
+                            text = lang === "fa" ? "صندوق" : "Cash Box"
+                          } else if (customer.id === "default-warehouse") {
+                            text = lang === "fa" ? "موجودی" : "Inventory"
+                            content = (
+                              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 whitespace-nowrap">
+                                {text}
+                              </Badge>
+                            )
+                          } else {
+                            content = customer.name
+                            text = customer.name
+                          }
+                        } else {
+                          const bankAccount = data.bankAccounts?.find((b) => b.id === trans.customerId)
+                          if (bankAccount) {
+                            text = `${bankAccount.bankName} - ${bankAccount.accountHolder}`
+                            content = (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 whitespace-nowrap">
+                                {text}
+                              </Badge>
+                            )
+                          }
+                        }
+
+                        return (
+                          <TruncatedTooltip text={text}>
+                            {content}
+                          </TruncatedTooltip>
+                        )
+                      })()}
+                    </TableCell>
+                    <TableCell className={`text-center p-2 max-w-[80px] ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      <TruncatedTooltip text={getProductTypeName(trans.productTypeId)}>
+                        {getProductTypeName(trans.productTypeId)}
+                      </TruncatedTooltip>
+                    </TableCell>
+                    {/* Goods Receipt (Product In) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(trans.type === "product_in" || trans.type === "product_purchase") && (trans.weight || trans.quantity) ? (
+                        <span className="font-medium text-red-600">
+                          {trans.quantity ? formatNumber(Math.abs(trans.quantity)) : ""}
+                          {trans.quantity && trans.weight ? " / " : ""}
+                          {trans.weight ? (
+                            displayWeightUnit === "original" ? (
+                              `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
+                            ) : (
+                              `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                            )
+                          ) : ""}
+                        </span>
+                      ) : "-"}
+                    </TableCell>
+
+                    {/* Goods Issue (Product Out) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(trans.type === "product_out" || trans.type === "product_sale") && (trans.weight || trans.quantity) ? (
+                        <span className="font-medium text-green-600">
+                          {trans.quantity ? formatNumber(Math.abs(trans.quantity)) : ""}
+                          {trans.quantity && trans.weight ? " / " : ""}
+                          {trans.weight ? (
+                            displayWeightUnit === "original" ? (
+                              `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
+                            ) : (
+                              `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                            )
+                          ) : ""}
+                        </span>
+                      ) : "-"}
+                    </TableCell>
+
+                    {/* Goods Talab (Receivable) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(() => {
+                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
+                        if (index === -1) return "-"
+
+                        if (filterProductType !== "all" || trans.productTypeId) {
+                          let balance = 0
+                          for (let i = 0; i <= index; i++) {
+                            const t = sortedTransactions[i]
+                            if (t.productTypeId === trans.productTypeId || filterProductType !== "all") {
+                              let qty = t.quantity || 0
+                              let weight = t.weight || 0
+
+                              // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
+                              // Only Purchase/Sale should affect these (for now)
+                              let sign = 0
+                              if (t.type === "product_sale") sign = 1
+                              else if (t.type === "product_purchase") sign = -1
+
+                              if (t.quantity) balance += (qty * sign)
+                              else if (t.weight) balance += (weight * sign)
+                            }
+                          }
+
+                          if (balance > 0) {
+                            return <span className="font-medium text-green-600">{formatNumber(Math.abs(balance))}</span>
+                          }
+                        }
+                        return "-"
+                      })()}
+                    </TableCell>
+
+                    {/* Goods Bedehi (Payable) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(() => {
+                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
+                        if (index === -1) return "-"
+
+                        if (filterProductType !== "all" || trans.productTypeId) {
+                          let balance = 0
+                          for (let i = 0; i <= index; i++) {
+                            const t = sortedTransactions[i]
+                            if (t.productTypeId === trans.productTypeId || filterProductType !== "all") {
+                              let qty = t.quantity || 0
+                              let weight = t.weight || 0
+
+                              // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
+                              // Only Purchase/Sale should affect these (for now)
+                              let sign = 0
+                              if (t.type === "product_sale") sign = 1
+                              else if (t.type === "product_purchase") sign = -1
+
+                              if (t.quantity) balance += (qty * sign)
+                              else if (t.weight) balance += (weight * sign)
+                            }
+                          }
+
+                          if (balance < 0) {
+                            return <span className="font-medium text-red-600">{formatNumber(Math.abs(balance))}</span>
+                          }
+                        }
+                        return "-"
+                      })()}
+                    </TableCell>
+
+                    {/* Money Talab (Receivable) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(() => {
+                        // Only for Product Sale (Credit Sale)
+                        if (trans.type === "product_sale" && trans.amount) {
+                          return (
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.abs(trans.amount))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                            </span>
+                          )
+                        }
+
+                        // For running balance check (previous logic was mixing row value with balance)
+                        // The column header is "Talab" (Receivable), which usually means the *Balance* state or the *Transaction Effect*?
+                        // In the previous step, I changed these columns to be "Talab/Bedehi" which implies BALANCE.
+                        // BUT, the user's screenshot shows "Money In", "Money Out", "Receivable", "Payable".
+                        // "In/Out" are transaction amounts. "Receivable/Payable" are BALANCES?
+                        // OR are "Receivable/Payable" the *credit* part of the transaction?
+
+                        // User said: "Goods Receipt ... Money out نداریم" (We don't have Money Out).
+                        // And in the screenshot, for "Product Purchase", there is "Payable: 1,200$".
+                        // This suggests "Receivable/Payable" columns might be showing the *transaction amount* that creates debt?
+                        // OR they are the running balance?
+
+                        // Let's look at the screenshot again.
+                        // Row 3: Product Purchase. Goods In: 100kg. Money Out: 100. Payable: 1,200$.
+                        // Row 4: Product Sale. Goods Out: 150kg. Money In: 50. Receivable: 1,500$.
+                        // Row 5: Cash Receipt. Money In: 500$.
+
+                        // It seems:
+                        // Money In/Out = Cash portion.
+                        // Receivable/Payable = Credit portion (or Balance?).
+
+                        // However, my previous implementation of "Talab/Bedehi" columns was calculating the RUNNING BALANCE.
+                        // If the user wants to see the *transaction effect* (e.g. "Sold on credit for $1000"), that's different.
+                        // But "Talab/Bedehi" usually refers to the status of the account.
+
+                        // Let's stick to the Running Balance logic I implemented, but ensure product_in/out don't affect it WRONGLY.
+                        // AND ensure product_in/out don't show up in Money In/Out.
+
+                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
+                        if (index === -1) return "-"
+
+                        let balance = 0
+                        for (let i = 0; i <= index; i++) {
+                          const t = sortedTransactions[i]
+                          let amount = t.amount || 0
+                          let sign = 0
+
+                          // Logic update:
+                          // product_in / product_out -> NO money effect.
+                          if (t.type === "product_in" || t.type === "product_out") {
+                            amount = 0;
+                          }
+
+                          if (t.type === "product_sale") sign = 1
+                          else if (t.type === "product_purchase") sign = -1
+                          else if (t.type === "cash_in" || t.type === "income") sign = -1
+                          else if (t.type === "cash_out" || t.type === "expense") sign = 1
+
+                          balance += (amount * sign)
+                        }
+
+                        if (balance > 0) {
+                          return (
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                            </span>
+                          )
+                        }
+                        return "-"
+                      })()}
+                    </TableCell>
+
+                    {/* Money Bedehi (Payable) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(() => {
+                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
+                        if (index === -1) return "-"
+
+                        let balance = 0
+                        for (let i = 0; i <= index; i++) {
+                          const t = sortedTransactions[i]
+                          let amount = t.amount || 0
+                          let sign = 0
+
+                          // Logic update:
+                          // product_in / product_out -> NO money effect.
+                          if (t.type === "product_in" || t.type === "product_out") {
+                            amount = 0;
+                          }
+
+                          if (t.type === "product_sale") sign = 1
+                          else if (t.type === "product_purchase") sign = -1
+                          else if (t.type === "cash_in" || t.type === "income") sign = -1
+                          else if (t.type === "cash_out" || t.type === "expense") sign = 1
+
+                          balance += (amount * sign)
+                        }
+
+                        if (balance < 0) {
+                          return (
+                            <span className="font-bold text-red-600">
+                              {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                            </span>
+                          )
+                        }
+                        return "-"
+                      })()}
+                    </TableCell>
+                    <TableCell className={`text-center p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
+                      {lang === "fa" ? (
+                        <div>
+                          <div className="font-medium">
+                            {formatDate(trans.date || trans.createdAt || "").persian}
+                          </div>
+                          <div className="text-muted-foreground text-[9px]">
+                            {formatDate(trans.date || trans.createdAt || "").gregorian}
+                          </div>
                         </div>
-                        <div className="text-muted-foreground text-[9px]">
+                      ) : (
+                        <div className="font-medium">
                           {formatDate(trans.date || trans.createdAt || "").gregorian}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="font-medium">
-                        {formatDate(trans.date || trans.createdAt || "").gregorian}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className={`text-center p-2 max-w-[120px] truncate ${isSubdoc ? "text-[10px]" : "text-xs"}`} title={trans.description}>
-                    {trans.description}
-                  </TableCell>
-                  <TableCell className="text-center p-2">
-                    <div className="flex gap-0.5 justify-center">
-                      {onEdit && !isSubdoc && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(trans)}>
-                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                            />
-                          </svg>
-                        </Button>
                       )}
-                      {!isSubdoc && (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(trans.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
+                    </TableCell>
+                    <TableCell className={`text-center p-2 max-w-[120px] truncate ${isSubdoc ? "text-[10px]" : "text-xs"}`} title={trans.description}>
+                      {trans.description}
+                    </TableCell>
+                    <TableCell className="text-center p-2 sticky right-0 bg-background z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.1)]">
+                      <div className="flex gap-0.5 justify-center">
+                        {onEdit && !isSubdoc && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(trans)}>
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                              />
+                            </svg>
+                          </Button>
+                        )}
+                        {!isSubdoc && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(trans.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
 
-              return (
-                <React.Fragment key={transaction.id}>
-                  {renderRow(transaction, false)}
-                  {isExpanded && subdocuments.map(subdoc => renderRow(subdoc, true))}
-                </React.Fragment>
-              )
-            })}
-          </TableBody>
-        </Table>
-        {sortedTransactions.length === 0 && (
-          <div className="p-8 text-center">
-            <p className="text-muted-foreground">
-              {searchTerm || filterType !== "all" || filterCustomer !== "all"
-                ? t("documentNotFound")
-                : t("noDocumentsRegistered")}
-            </p>
-          </div>
-        )}
+                return (
+                  <React.Fragment key={transaction.id}>
+                    {renderRow(transaction, false)}
+                    {isExpanded && subdocuments.map(subdoc => renderRow(subdoc, true))}
+                  </React.Fragment>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        {
+          sortedTransactions.length === 0 && (
+            <div className="p-8 text-center">
+              <p className="text-muted-foreground">
+                {searchTerm || filterType !== "all" || filterCustomer !== "all"
+                  ? t("documentNotFound")
+                  : t("noDocumentsRegistered")}
+              </p>
+            </div>
+          )
+        }
 
         {/* Pagination Controls */}
-        {sortedTransactions.length > 0 && (
-          <div className="flex items-center justify-between mt-6 p-4 border-t">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{t("itemsPerPage")}</span>
-              <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                setItemsPerPage(Number(val))
-                setCurrentPage(1)
-              }}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                  <SelectItem value="200">200</SelectItem>
-                  <SelectItem value="500">500</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="text-sm text-muted-foreground">
-                {t("showing")} {startIndex + 1} {t("to")} {Math.min(endIndex, sortedTransactions.length)} {t("of")} {sortedTransactions.length} {t("documentsCount")}
-              </span>
-            </div>
+        {
+          sortedTransactions.length > 0 && (
+            <div className="flex items-center justify-between mt-6 p-4 border-t">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{t("itemsPerPage")}</span>
+                <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+                  setItemsPerPage(Number(val))
+                  setCurrentPage(1)
+                }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                    <SelectItem value="500">500</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">
+                  {t("showing")} {startIndex + 1} {t("to")} {Math.min(endIndex, sortedTransactions.length)} {t("of")} {sortedTransactions.length} {t("documentsCount")}
+                </span>
+              </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
-              >
-                {t("first")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <span className="text-sm">
-                {t("page")} {currentPage} {t("of")} {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
-              >
-                {t("last")}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  {t("first")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <span className="text-sm">
+                  {t("page")} {currentPage} {t("of")} {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  {t("last")}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </Card>
+          )
+        }
+      </Card >
 
       {/* Warning for large datasets */}
       {

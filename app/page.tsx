@@ -400,8 +400,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-background" dir={lang === "fa" ? "rtl" : "ltr"}>
       <div className="flex min-h-screen">
         <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
-        <main className="flex-1 px-3 py-4 md:px-8 md:py-8 lg:px-10 lg:py-10 transition-all duration-300">
-          <div className="max-w-6xl mx-auto space-y-6">
+        <main className="flex-1 px-3 py-4 md:px-8 md:py-8 lg:px-10 lg:py-10 transition-all duration-300 overflow-hidden">
+          <div className="w-full mx-auto space-y-6">
             {renderContent()}
           </div>
         </main>
