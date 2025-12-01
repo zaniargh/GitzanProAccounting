@@ -11,12 +11,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import { Package, DollarSign, Trash2 } from "lucide-react"
 import type { Transaction, AppData, TransactionType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import type { ProductType } from "@/types"
 import { TransactionList } from "./transaction-list"
 import { useLang } from "@/components/language-provider"
+import { formatBothDatesWithTime } from "@/lib/date-utils"
 
 interface TransactionFormProps {
   data: AppData
@@ -221,6 +223,30 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     if (confirm(t("confirmDeleteTemporary"))) {
       setTemporaryTransactions(temporaryTransactions.filter(t => t.id !== id))
     }
+  }
+
+  const handleEditTemporary = (tx: Transaction) => {
+    // Load the temporary transaction into the form for editing
+    setFormData({
+      type: tx.type,
+      customerId: tx.customerId,
+      amount: tx.amount.toString(),
+      weight: tx.weight?.toString() || "",
+      quantity: tx.quantity?.toString() || "",
+      unitPrice: tx.unitPrice?.toString() || "",
+      productTypeId: tx.productTypeId || "",
+      description: tx.description,
+      date: tx.date.includes("T") ? tx.date.slice(0, 16) : tx.date + "T00:00",
+      currencyId: tx.currencyId || data.settings?.baseCurrencyId || "",
+      weightUnit: tx.weightUnit || data.settings?.baseWeightUnit || "ton",
+      accountId: tx.accountId || "default-cash-safe",
+    })
+
+    // Remove this transaction from the temporary list
+    setTemporaryTransactions(temporaryTransactions.filter(t => t.id !== tx.id))
+
+    // Scroll to top to show the form
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -718,6 +744,28 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     return data.customers.find((customer) => customer.id === customerId)?.name || t("unknown")
   }
 
+  const formatDate = (dateString: string) => {
+    if (!dateString || dateString.trim() === "") {
+      return {
+        persian: "تاریخ نامعتبر",
+        gregorian: "Invalid Date",
+      }
+    }
+
+    try {
+      const dates = formatBothDatesWithTime(dateString)
+      return {
+        persian: dates.persian,
+        gregorian: dates.gregorian,
+      }
+    } catch (error) {
+      return {
+        persian: dateString,
+        gregorian: dateString,
+      }
+    }
+  }
+
   const transactionTypes = [
     { value: "product_in", label: t("productIn"), icon: Package, color: "text-green-600" },
     { value: "product_out", label: t("productOut"), icon: Package, color: "text-red-600" },
@@ -1120,11 +1168,11 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 type="button"
                 variant="secondary"
-                className="w-full"
+                className="flex-1 text-sm"
                 onClick={handleTemporarySubmit}
                 disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
               >
@@ -1132,7 +1180,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               </Button>
               <Button
                 type="submit"
-                className="w-full"
+                className="flex-1 text-sm"
                 disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
               >
                 {temporaryTransactions.length > 0
@@ -1155,46 +1203,119 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                   <span className="text-xs font-normal text-muted-foreground">{t("temporaryDocDescription")}</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-right">
+                  <table className="w-full">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="p-2">{t("documentNumber")}</th>
-                        <th className="p-2">{t("type")}</th>
-                        <th className="p-2">{t("customer")}</th>
-                        <th className="p-2">{t("amount")} / {t("weight")}</th>
-                        <th className="p-2">{t("description")}</th>
-                        <th className="p-2">{t("actions")}</th>
+                        <th className="text-center text-xs p-2">{t("documentNumber")}</th>
+                        <th className="text-center text-xs p-2">{t("type")}</th>
+                        <th className="text-center text-xs p-2">{t("customer")}</th>
+                        <th className="text-center text-xs p-2">{t("productType")}</th>
+                        <th className="text-center text-xs p-2">{t("quantity")}</th>
+                        <th className="text-center text-xs p-2">{t("weight")}</th>
+                        <th className="text-center text-xs p-2">{t("unitPrice")}</th>
+                        <th className="text-center text-xs p-2">{t("amount")}</th>
+                        <th className="text-center text-xs p-2">{t("date")}</th>
+                        <th className="text-center text-xs p-2">{t("description")}</th>
+                        <th className="text-center text-xs p-2 w-[80px]">{t("operations")}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {temporaryTransactions.map((tx) => (
-                        <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20">
-                          <td className="p-2 font-mono">{tx.documentNumber}</td>
-                          <td className="p-2">
-                            {transactionTypes.find(t => t.value === tx.type)?.label}
-                          </td>
-                          <td className="p-2">{getCustomerName(tx.customerId)}</td>
-                          <td className="p-2">
-                            {tx.weight ? `${tx.weight} ${t(tx.weightUnit || "ton")}` :
-                              tx.quantity ? `${tx.quantity} ${t("unit")}` :
-                                tx.amount.toLocaleString()}
-                          </td>
-                          <td className="p-2 max-w-[200px] truncate" title={tx.description}>
-                            {tx.description}
-                          </td>
-                          <td className="p-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteTemporary(tx.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {temporaryTransactions.map((tx) => {
+                        const typeInfo = transactionTypes.find(t => t.value === tx.type)
+                        const formatNumber = (num: number) => new Intl.NumberFormat("en-US").format(num)
+                        const getAmountClass = (amount: number) => {
+                          if (amount > 0) return "text-green-600"
+                          if (amount < 0) return "text-red-600"
+                          return ""
+                        }
+
+                        return (
+                          <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="text-center font-mono p-2 text-[10px]">{tx.documentNumber}</td>
+                            <td className="text-center p-2">
+                              <Badge className="bg-blue-100 text-blue-800 text-[9px] px-1 py-0">
+                                {typeInfo?.label}
+                              </Badge>
+                            </td>
+                            <td className="text-center p-2 max-w-[100px] text-xs truncate">
+                              {getCustomerName(tx.customerId)}
+                            </td>
+                            <td className="text-center p-2 max-w-[80px] text-xs truncate">
+                              {tx.productTypeId ? productTypes.find(p => p.id === tx.productTypeId)?.name || "-" : "-"}
+                            </td>
+                            <td className="text-center p-2 whitespace-nowrap text-xs">
+                              {tx.quantity ? (
+                                <span className={`font-medium ${getAmountClass(tx.quantity)}`}>
+                                  {formatNumber(Math.abs(tx.quantity))}
+                                </span>
+                              ) : "-"}
+                            </td>
+                            <td className="text-center p-2 whitespace-nowrap text-xs">
+                              {tx.weight ? (
+                                <span className={`font-medium ${getAmountClass(tx.weight)}`}>
+                                  {formatNumber(Math.abs(tx.weight))} {tx.weightUnit || "ton"}
+                                </span>
+                              ) : "-"}
+                            </td>
+                            <td className="text-center p-2 whitespace-nowrap text-xs">
+                              {tx.unitPrice ? formatNumber(tx.unitPrice) : "-"}
+                            </td>
+                            <td className="text-center p-2 whitespace-nowrap text-xs">
+                              <span className={`font-bold ${getAmountClass(tx.amount)}`}>
+                                {formatNumber(Math.abs(tx.amount))} {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                              </span>
+                            </td>
+                            <td className="text-center p-2 text-[10px]">
+                              {lang === "fa" ? (
+                                <div>
+                                  <div className="font-medium">
+                                    {formatDate(tx.date || tx.createdAt || "").persian}
+                                  </div>
+                                  <div className="text-muted-foreground text-[9px]">
+                                    {formatDate(tx.date || tx.createdAt || "").gregorian}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="font-medium">
+                                  {formatDate(tx.date || tx.createdAt || "").gregorian}
+                                </div>
+                              )}
+                            </td>
+                            <td className="text-center p-2 max-w-[120px] truncate text-xs" title={tx.description}>
+                              {tx.description}
+                            </td>
+                            <td className="text-center p-2">
+                              <div className="flex gap-0.5 justify-center">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => handleEditTemporary(tx)}
+                                >
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                    />
+                                  </svg>
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => handleDeleteTemporary(tx.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
