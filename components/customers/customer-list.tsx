@@ -95,6 +95,38 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
       // Skip main documents - فقط subdocuments را حساب کن
       if (transaction.isMainDocument) return
 
+      // برای Inventory (انبار): همه تراکنش‌های product_in و product_out را محاسبه کن
+      if (customerId === "default-warehouse") {
+        if (transaction.type === "product_in" && transaction.productTypeId) {
+          let amount = transaction.quantity || transaction.weight || 0
+          if (transaction.weight) {
+            switch (transaction.weightUnit) {
+              case "mg": amount /= 1_000_000_000; break;
+              case "g": amount /= 1_000_000; break;
+              case "kg": amount /= 1_000; break;
+              case "lb": amount /= 2204.62; break;
+            }
+          }
+          // کالا به انبار رسید
+          productDebts[transaction.productTypeId] =
+            (productDebts[transaction.productTypeId] || 0) + amount
+        } else if (transaction.type === "product_out" && transaction.productTypeId) {
+          let amount = transaction.quantity || transaction.weight || 0
+          if (transaction.weight) {
+            switch (transaction.weightUnit) {
+              case "mg": amount /= 1_000_000_000; break;
+              case "g": amount /= 1_000_000; break;
+              case "kg": amount /= 1_000; break;
+              case "lb": amount /= 2204.62; break;
+            }
+          }
+          // کالا از انبار خارج شد
+          productDebts[transaction.productTypeId] =
+            (productDebts[transaction.productTypeId] || 0) - amount
+        }
+        return // Skip rest of processing for inventory
+      }
+
       if (transaction.customerId === customerId) {
         // Debug log for bank accounts
         if (customerId.includes("bank") || customerId === "default-cash-safe") {
@@ -148,10 +180,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   case "lb": amount /= 2204.62; break;
                 }
               }
-              // استفاده مستقیم از amount چون قبلاً signed شده (منفی/مثبت)
+              // مشتری کالا داد → طلبکار است (منفی) - قرمز نمایش داده می‌شود
               productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) + amount
+                (productDebts[transaction.productTypeId] || 0) - amount
             }
+            // product_in فقط کالا را منتقل می‌کند، نه پول
             break
           case "product_out":
             if (transaction.productTypeId) {
@@ -164,10 +197,11 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   case "lb": amount /= 2204.62; break;
                 }
               }
-              // استفاده مستقیم از amount چون قبلاً signed شده (منفی/مثبت)
+              // مشتری کالا گرفت → بدهکار است (مثبت) - سبز نمایش داده می‌شود
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) + amount
             }
+            // product_out فقط کالا را منتقل می‌کند، نه پول
             break
           case "cash_in": // ورود وجه: بدهی نقدی مشتری کم میشود (مقدار منفی است، پس جمع می‌کنیم)
             if (customerId === transaction.customerId) {

@@ -147,7 +147,37 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
     return productTypes.find((productType) => productType.id === productTypeId)?.name || t("unknown")
   }
 
+  // Calculate totals from subdocuments for main document display
+  const getSubdocumentTotals = (mainDocId: string) => {
+    const subdocs = getSubdocuments(mainDocId)
+    const totals = {
+      quantity: 0,
+      weight: 0,
+      amount: 0,
+      count: subdocs.length
+    }
+
+    subdocs.forEach(sub => {
+      if (sub.quantity) totals.quantity += sub.quantity
+      if (sub.weight) totals.weight += sub.weight
+      if (sub.amount) totals.amount += sub.amount
+    })
+
+    return totals
+  }
+
   const getTransactionTypeInfo = (transaction: Transaction) => {
+    // If this is a main document, show "MainDocument" instead of the type
+    if (transaction.isMainDocument) {
+      console.log("Main document found:", transaction.documentNumber, transaction)
+      return {
+        label: "MainDocument",
+        icon: Package,
+        color: "bg-indigo-100 text-indigo-800",
+        arrow: ArrowDown
+      }
+    }
+
     const type = transaction.type
     const isBankAccount = transaction.accountId && transaction.accountId !== "default-cash-safe"
 
@@ -945,9 +975,21 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                   </TableRow>
                 )
 
+                // For main documents, create an aggregated transaction to display totals
+                let displayTransaction = transaction
+                if (transaction.isMainDocument && hasSubdocs) {
+                  const totals = getSubdocumentTotals(transaction.id)
+                  displayTransaction = {
+                    ...transaction,
+                    quantity: totals.quantity || undefined,
+                    weight: totals.weight || undefined,
+                    amount: totals.amount
+                  }
+                }
+
                 return (
                   <React.Fragment key={transaction.id}>
-                    {renderRow(transaction, false)}
+                    {renderRow(displayTransaction, false)}
                     {isExpanded && subdocuments.map(subdoc => renderRow(subdoc, true))}
                   </React.Fragment>
                 )

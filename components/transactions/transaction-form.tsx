@@ -1159,7 +1159,6 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                                 })
                               }}
                               className="text-right h-9 text-sm"
-                              placeholder={t("weightPlaceholder")}
                             />
                           </div>
                         )}
@@ -1186,7 +1185,6 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                                 })
                               }}
                               className="text-right h-9 text-sm"
-                              placeholder={t("quantityPlaceholder")}
                             />
                           </div>
                         )}
@@ -1225,7 +1223,6 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             })
                           }}
                           className="text-right h-9 text-sm pl-8"
-                          placeholder="0.00"
                         />
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
                           {data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}
@@ -1271,8 +1268,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="text-right h-16 text-sm resize-none"
-                  placeholder={t("descriptionPlaceholder")}
+                  className={`h-16 text-sm resize-none ${lang === "fa" ? "text-right" : "text-left"}`}
+                  dir={lang === "fa" ? "rtl" : "ltr"}
                 />
               </div>
             </div>
