@@ -107,6 +107,49 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     }
   }, [data.settings, formData.currencyId, formData.weightUnit])
 
+  // Auto-select customer from temporary transactions
+  useEffect(() => {
+    // If we have temporary transactions and no customer is selected yet
+    if (temporaryTransactions.length > 0 && !formData.customerId) {
+      const firstTempCustomerId = temporaryTransactions[0].customerId
+      if (firstTempCustomerId) {
+        setFormData(prev => ({ ...prev, customerId: firstTempCustomerId }))
+      }
+    }
+  }, [temporaryTransactions, formData.customerId])
+
+  // Auto-populate description for cash/bank transactions
+  useEffect(() => {
+    // Only auto-populate for cash transactions
+    if (formData.type !== "cash_in" && formData.type !== "cash_out") {
+      return
+    }
+
+    // Get account name
+    let accountName = ""
+    if (formData.accountId === "default-cash-safe") {
+      accountName = lang === "fa" ? "صندوق" : "Cash Box"
+    } else if (formData.accountId) {
+      const bankAccount = data.bankAccounts?.find(b => b.id === formData.accountId)
+      if (bankAccount) {
+        accountName = `${bankAccount.bankName} - ${bankAccount.accountNumber}`
+      }
+    }
+
+    if (accountName) {
+      let autoDescription = ""
+      if (formData.type === "cash_in") {
+        // واریز به (صندوق / حساب بانکی)
+        autoDescription = lang === "fa" ? `واریز به ${accountName}` : `Transfer to ${accountName}`
+      } else if (formData.type === "cash_out") {
+        // برداشت از (صندوق / حساب بانکی)
+        autoDescription = lang === "fa" ? `برداشت از ${accountName}` : `Withdrawal from ${accountName}`
+      }
+
+      setFormData(prev => ({ ...prev, description: autoDescription }))
+    }
+  }, [formData.type, formData.accountId, data.bankAccounts, lang])
+
   const weightUnits = [
     { value: "mg", label: t("weightUnit_mg") },
     { value: "g", label: t("weightUnit_g") },
@@ -141,6 +184,21 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
   const handleTemporarySubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setValidationError("")
+
+    // Validation: Check if bank account currency matches selected currency
+    if (formData.accountId && !formData.accountId.startsWith("default-")) {
+      const bankAccount = data.bankAccounts?.find((acc) => acc.id === formData.accountId)
+      if (bankAccount && bankAccount.currencyId !== formData.currencyId) {
+        const accountCurrency = data.currencies?.find((c) => c.id === bankAccount.currencyId)?.name || "Unknown"
+        const selectedCurrency = data.currencies?.find((c) => c.id === formData.currencyId)?.name || "Unknown"
+        setValidationError(
+          t("currencyMismatchError")
+            .replace("{accountCurrency}", accountCurrency)
+            .replace("{selectedCurrency}", selectedCurrency)
+        )
+        return
+      }
+    }
 
     // Validation: Customer must be selected
     if (!formData.customerId) {
@@ -1268,6 +1326,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         <th className="text-center text-xs p-1 border-r" rowSpan={2}>{t("type")}</th>
                         <th className="text-center text-xs p-1 border-r" rowSpan={2}>{t("customer")}</th>
                         <th className="text-center text-xs p-1 border-r" rowSpan={2}>{t("productType")}</th>
+                        <th className="text-center text-xs p-1 border-r" rowSpan={2}>{t("price")}</th>
 
                         {/* Goods Section Header */}
                         <th className="text-center text-xs p-1 border-r border-b bg-blue-50/50" colSpan={4}>
@@ -1350,24 +1409,55 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             <td className="text-center p-2 max-w-[80px] text-xs truncate">
                               {tx.productTypeId ? productTypes.find(p => p.id === tx.productTypeId)?.name || "-" : "-"}
                             </td>
+                            {/* Price Column */}
+                            <td className="text-center p-2 whitespace-nowrap text-xs">
+                              {(tx.type === "product_purchase" || tx.type === "product_sale") && tx.unitPrice ? (
+                                <>
+                                  {formatNumber(tx.unitPrice)}
+                                  <span className="text-[10px] text-gray-500 ml-1">
+                                    {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                  </span>
+                                </>
+                              ) : "-"}
+                            </td>
                             {/* Goods Receipt (Product In) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "product_in" || tx.type === "product_purchase") && (tx.weight || tx.quantity) ? (
+                              {(tx.type === "product_in") && (tx.weight || tx.quantity) ? (
                                 <span className="font-medium text-red-600">
-                                  {tx.quantity ? formatNumber(Math.abs(tx.quantity)) : ""}
+                                  {tx.quantity ? (
+                                    <>
+                                      {formatNumber(Math.abs(tx.quantity))}
+                                      <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
+                                    </>
+                                  ) : ""}
                                   {tx.quantity && tx.weight ? " / " : ""}
-                                  {tx.weight ? `${formatNumber(Math.abs(tx.weight))} ${tx.weightUnit || "ton"}` : ""}
+                                  {tx.weight ? (
+                                    <>
+                                      {formatNumber(Math.abs(tx.weight))}
+                                      <span className="text-[10px] text-gray-500 ml-1">({tx.weightUnit || "ton"})</span>
+                                    </>
+                                  ) : ""}
                                 </span>
                               ) : "-"}
                             </td>
 
                             {/* Goods Issue (Product Out) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "product_out" || tx.type === "product_sale") && (tx.weight || tx.quantity) ? (
+                              {(tx.type === "product_out") && (tx.weight || tx.quantity) ? (
                                 <span className="font-medium text-green-600">
-                                  {tx.quantity ? formatNumber(Math.abs(tx.quantity)) : ""}
+                                  {tx.quantity ? (
+                                    <>
+                                      {formatNumber(Math.abs(tx.quantity))}
+                                      <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
+                                    </>
+                                  ) : ""}
                                   {tx.quantity && tx.weight ? " / " : ""}
-                                  {tx.weight ? `${formatNumber(Math.abs(tx.weight))} ${tx.weightUnit || "ton"}` : ""}
+                                  {tx.weight ? (
+                                    <>
+                                      {formatNumber(Math.abs(tx.weight))}
+                                      <span className="text-[10px] text-gray-500 ml-1">({tx.weightUnit || "ton"})</span>
+                                    </>
+                                  ) : ""}
                                 </span>
                               ) : "-"}
                             </td>
@@ -1375,29 +1465,16 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Goods Talab (Receivable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                const index = temporaryTransactions.findIndex(t => t.id === tx.id)
-                                if (index === -1) return "-"
-
-                                let balance = 0
-                                for (let i = 0; i <= index; i++) {
-                                  const t = temporaryTransactions[i]
-                                  if (t.productTypeId === tx.productTypeId) {
-                                    let qty = t.quantity || 0
-                                    let weight = t.weight || 0
-
-                                    // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
-                                    // Only Purchase/Sale should affect these (for now)
-                                    let sign = 0
-                                    if (t.type === "product_sale") sign = 1
-                                    else if (t.type === "product_purchase") sign = -1
-
-                                    if (t.quantity) balance += (qty * sign)
-                                    else if (t.weight) balance += (weight * sign)
-                                  }
-                                }
-
-                                if (balance > 0) {
-                                  return <span className="font-medium text-green-600">{formatNumber(Math.abs(balance))}</span>
+                                if (tx.type === "product_purchase" && (tx.quantity || tx.weight)) {
+                                  const val = tx.quantity || tx.weight || 0;
+                                  return (
+                                    <span className="font-medium text-green-600">
+                                      {formatNumber(Math.abs(val))}
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        ({tx.weight ? (tx.weightUnit || "ton") : "Count"})
+                                      </span>
+                                    </span>
+                                  )
                                 }
                                 return "-"
                               })()}
@@ -1406,29 +1483,16 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Goods Bedehi (Payable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                const index = temporaryTransactions.findIndex(t => t.id === tx.id)
-                                if (index === -1) return "-"
-
-                                let balance = 0
-                                for (let i = 0; i <= index; i++) {
-                                  const t = temporaryTransactions[i]
-                                  if (t.productTypeId === tx.productTypeId) {
-                                    let qty = t.quantity || 0
-                                    let weight = t.weight || 0
-
-                                    // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
-                                    // Only Purchase/Sale should affect these (for now)
-                                    let sign = 0
-                                    if (t.type === "product_sale") sign = 1
-                                    else if (t.type === "product_purchase") sign = -1
-
-                                    if (t.quantity) balance += (qty * sign)
-                                    else if (t.weight) balance += (weight * sign)
-                                  }
-                                }
-
-                                if (balance < 0) {
-                                  return <span className="font-medium text-red-600">{formatNumber(Math.abs(balance))}</span>
+                                if (tx.type === "product_sale" && (tx.quantity || tx.weight)) {
+                                  const val = tx.quantity || tx.weight || 0;
+                                  return (
+                                    <span className="font-medium text-red-600">
+                                      {formatNumber(Math.abs(val))}
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        ({tx.weight ? (tx.weightUnit || "ton") : "Count"})
+                                      </span>
+                                    </span>
+                                  )
                                 }
                                 return "-"
                               })()}
@@ -1437,8 +1501,11 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Money Receipt (Cash In) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(tx.type === "cash_in" || tx.type === "income") ? (
-                                <span className="font-bold text-green-600">
-                                  {formatNumber(Math.abs(tx.amount))} {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                <span className={`font-bold ${tx.type === "cash_in" ? "text-red-600" : "text-green-600"}`}>
+                                  {formatNumber(Math.abs(tx.amount))}
+                                  <span className="text-[10px] text-gray-500 ml-1">
+                                    {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                  </span>
                                 </span>
                               ) : "-"}
                             </td>
@@ -1446,8 +1513,11 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Money Payment (Cash Out) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(tx.type === "cash_out" || tx.type === "expense") ? (
-                                <span className="font-bold text-red-600">
-                                  {formatNumber(Math.abs(tx.amount))} {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                <span className="font-bold text-green-600">
+                                  {formatNumber(Math.abs(tx.amount))}
+                                  <span className="text-[10px] text-gray-500 ml-1">
+                                    {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                  </span>
                                 </span>
                               ) : "-"}
                             </td>
@@ -1455,33 +1525,14 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Money Talab (Receivable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                const index = temporaryTransactions.findIndex(t => t.id === tx.id)
-                                if (index === -1) return "-"
-
-                                let balance = 0
-                                for (let i = 0; i <= index; i++) {
-                                  const t = temporaryTransactions[i]
-                                  let amount = t.amount || 0
-                                  let sign = 0
-
-                                  // Logic update:
-                                  // product_in / product_out -> NO money effect.
-                                  if (t.type === "product_in" || t.type === "product_out") {
-                                    amount = 0;
-                                  }
-
-                                  if (t.type === "product_sale") sign = 1
-                                  else if (t.type === "product_purchase") sign = -1
-                                  else if (t.type === "cash_in" || t.type === "income") sign = -1
-                                  else if (t.type === "cash_out" || t.type === "expense") sign = 1
-
-                                  balance += (amount * sign)
-                                }
-
-                                if (balance > 0) {
+                                // Product Sale -> Green
+                                if (tx.type === "product_sale" && tx.amount) {
                                   return (
                                     <span className="font-bold text-green-600">
-                                      {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                      {formatNumber(Math.abs(tx.amount))}
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                      </span>
                                     </span>
                                   )
                                 }
@@ -1492,33 +1543,14 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             {/* Money Bedehi (Payable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                const index = temporaryTransactions.findIndex(t => t.id === tx.id)
-                                if (index === -1) return "-"
-
-                                let balance = 0
-                                for (let i = 0; i <= index; i++) {
-                                  const t = temporaryTransactions[i]
-                                  let amount = t.amount || 0
-                                  let sign = 0
-
-                                  // Logic update:
-                                  // product_in / product_out -> NO money effect.
-                                  if (t.type === "product_in" || t.type === "product_out") {
-                                    amount = 0;
-                                  }
-
-                                  if (t.type === "product_sale") sign = 1
-                                  else if (t.type === "product_purchase") sign = -1
-                                  else if (t.type === "cash_in" || t.type === "income") sign = -1
-                                  else if (t.type === "cash_out" || t.type === "expense") sign = 1
-
-                                  balance += (amount * sign)
-                                }
-
-                                if (balance < 0) {
+                                // Product Purchase -> Red
+                                if (tx.type === "product_purchase" && tx.amount) {
                                   return (
                                     <span className="font-bold text-red-600">
-                                      {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                      {formatNumber(Math.abs(tx.amount))}
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                      </span>
                                     </span>
                                   )
                                 }

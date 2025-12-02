@@ -227,5 +227,6 @@
   "colIn": "In",
   "colOut": "Out",
   "colTalab": "Receivable",
-  "colBedehi": "Payable"
+  "colBedehi": "Payable",
+  "price": "Price"
 }

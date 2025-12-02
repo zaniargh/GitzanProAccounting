@@ -608,6 +608,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     {getSortIcon("productType")}
                   </Button>
                 </TableHead>
+                <TableHead className="text-center text-xs p-1 h-auto border-r" rowSpan={2}>
+                  {t("price")}
+                </TableHead>
 
                 {/* Goods Section Header */}
                 <TableHead className="text-center text-xs p-1 h-auto border-r border-b bg-blue-50/50" colSpan={4}>
@@ -737,17 +740,39 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                         {getProductTypeName(trans.productTypeId)}
                       </TruncatedTooltip>
                     </TableCell>
+                    {/* Price Column */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(trans.type === "product_purchase" || trans.type === "product_sale") && trans.unitPrice ? (
+                        <>
+                          {formatNumber(trans.unitPrice)}
+                          <span className="text-[10px] text-gray-500 ml-1">
+                            {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                          </span>
+                        </>
+                      ) : "-"}
+                    </TableCell>
                     {/* Goods Receipt (Product In) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "product_in" || trans.type === "product_purchase") && (trans.weight || trans.quantity) ? (
+                      {(trans.type === "product_in") && (trans.weight || trans.quantity) ? (
                         <span className="font-medium text-red-600">
-                          {trans.quantity ? formatNumber(Math.abs(trans.quantity)) : ""}
+                          {trans.quantity ? (
+                            <>
+                              {formatNumber(Math.abs(trans.quantity))}
+                              <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
+                            </>
+                          ) : ""}
                           {trans.quantity && trans.weight ? " / " : ""}
                           {trans.weight ? (
                             displayWeightUnit === "original" ? (
-                              `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
+                              <>
+                                {formatNumber(Math.abs(trans.weight))}
+                                <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                              </>
                             ) : (
-                              `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                              <>
+                                {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
+                                <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
+                              </>
                             )
                           ) : ""}
                         </span>
@@ -756,15 +781,26 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
                     {/* Goods Issue (Product Out) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "product_out" || trans.type === "product_sale") && (trans.weight || trans.quantity) ? (
+                      {(trans.type === "product_out") && (trans.weight || trans.quantity) ? (
                         <span className="font-medium text-green-600">
-                          {trans.quantity ? formatNumber(Math.abs(trans.quantity)) : ""}
+                          {trans.quantity ? (
+                            <>
+                              {formatNumber(Math.abs(trans.quantity))}
+                              <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
+                            </>
+                          ) : ""}
                           {trans.quantity && trans.weight ? " / " : ""}
                           {trans.weight ? (
                             displayWeightUnit === "original" ? (
-                              `${formatNumber(Math.abs(trans.weight))} ${trans.weightUnit || "ton"}`
+                              <>
+                                {formatNumber(Math.abs(trans.weight))}
+                                <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                              </>
                             ) : (
-                              `${formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))} ${t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit}`
+                              <>
+                                {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
+                                <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
+                              </>
                             )
                           ) : ""}
                         </span>
@@ -774,31 +810,16 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     {/* Goods Talab (Receivable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                       {(() => {
-                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
-                        if (index === -1) return "-"
-
-                        if (filterProductType !== "all" || trans.productTypeId) {
-                          let balance = 0
-                          for (let i = 0; i <= index; i++) {
-                            const t = sortedTransactions[i]
-                            if (t.productTypeId === trans.productTypeId || filterProductType !== "all") {
-                              let qty = t.quantity || 0
-                              let weight = t.weight || 0
-
-                              // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
-                              // Only Purchase/Sale should affect these (for now)
-                              let sign = 0
-                              if (t.type === "product_sale") sign = 1
-                              else if (t.type === "product_purchase") sign = -1
-
-                              if (t.quantity) balance += (qty * sign)
-                              else if (t.weight) balance += (weight * sign)
-                            }
-                          }
-
-                          if (balance > 0) {
-                            return <span className="font-medium text-green-600">{formatNumber(Math.abs(balance))}</span>
-                          }
+                        if (trans.type === "product_purchase" && (trans.quantity || trans.weight)) {
+                          const val = trans.quantity || trans.weight || 0;
+                          return (
+                            <span className="font-medium text-green-600">
+                              {formatNumber(Math.abs(val))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
+                              </span>
+                            </span>
+                          )
                         }
                         return "-"
                       })()}
@@ -807,103 +828,56 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     {/* Goods Bedehi (Payable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                       {(() => {
-                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
-                        if (index === -1) return "-"
-
-                        if (filterProductType !== "all" || trans.productTypeId) {
-                          let balance = 0
-                          for (let i = 0; i <= index; i++) {
-                            const t = sortedTransactions[i]
-                            if (t.productTypeId === trans.productTypeId || filterProductType !== "all") {
-                              let qty = t.quantity || 0
-                              let weight = t.weight || 0
-
-                              // Logic update: User wants Goods Receipt/Issue to NOT affect Goods Payable/Receivable
-                              // Only Purchase/Sale should affect these (for now)
-                              let sign = 0
-                              if (t.type === "product_sale") sign = 1
-                              else if (t.type === "product_purchase") sign = -1
-
-                              if (t.quantity) balance += (qty * sign)
-                              else if (t.weight) balance += (weight * sign)
-                            }
-                          }
-
-                          if (balance < 0) {
-                            return <span className="font-medium text-red-600">{formatNumber(Math.abs(balance))}</span>
-                          }
+                        if (trans.type === "product_sale" && (trans.quantity || trans.weight)) {
+                          const val = trans.quantity || trans.weight || 0;
+                          return (
+                            <span className="font-medium text-red-600">
+                              {formatNumber(Math.abs(val))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
+                              </span>
+                            </span>
+                          )
                         }
                         return "-"
                       })()}
                     </TableCell>
 
+                    {/* Money Receipt (Cash In) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(trans.type === "cash_in" || trans.type === "income") ? (
+                        <span className="font-bold text-red-600">
+                          {formatNumber(Math.abs(trans.amount))}
+                          <span className="text-[10px] text-gray-500 ml-1">
+                            {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                          </span>
+                        </span>
+                      ) : "-"}
+                    </TableCell>
+
+                    {/* Money Payment (Cash Out) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {(trans.type === "cash_out" || trans.type === "expense") ? (
+                        <span className="font-bold text-green-600">
+                          {formatNumber(Math.abs(trans.amount))}
+                          <span className="text-[10px] text-gray-500 ml-1">
+                            {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                          </span>
+                        </span>
+                      ) : "-"}
+                    </TableCell>
+
                     {/* Money Talab (Receivable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                       {(() => {
-                        // Only for Product Sale (Credit Sale)
+                        // Product Sale -> Green
                         if (trans.type === "product_sale" && trans.amount) {
                           return (
                             <span className="font-bold text-green-600">
-                              {formatNumber(Math.abs(trans.amount))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
-                            </span>
-                          )
-                        }
-
-                        // For running balance check (previous logic was mixing row value with balance)
-                        // The column header is "Talab" (Receivable), which usually means the *Balance* state or the *Transaction Effect*?
-                        // In the previous step, I changed these columns to be "Talab/Bedehi" which implies BALANCE.
-                        // BUT, the user's screenshot shows "Money In", "Money Out", "Receivable", "Payable".
-                        // "In/Out" are transaction amounts. "Receivable/Payable" are BALANCES?
-                        // OR are "Receivable/Payable" the *credit* part of the transaction?
-
-                        // User said: "Goods Receipt ... Money out نداریم" (We don't have Money Out).
-                        // And in the screenshot, for "Product Purchase", there is "Payable: 1,200$".
-                        // This suggests "Receivable/Payable" columns might be showing the *transaction amount* that creates debt?
-                        // OR they are the running balance?
-
-                        // Let's look at the screenshot again.
-                        // Row 3: Product Purchase. Goods In: 100kg. Money Out: 100. Payable: 1,200$.
-                        // Row 4: Product Sale. Goods Out: 150kg. Money In: 50. Receivable: 1,500$.
-                        // Row 5: Cash Receipt. Money In: 500$.
-
-                        // It seems:
-                        // Money In/Out = Cash portion.
-                        // Receivable/Payable = Credit portion (or Balance?).
-
-                        // However, my previous implementation of "Talab/Bedehi" columns was calculating the RUNNING BALANCE.
-                        // If the user wants to see the *transaction effect* (e.g. "Sold on credit for $1000"), that's different.
-                        // But "Talab/Bedehi" usually refers to the status of the account.
-
-                        // Let's stick to the Running Balance logic I implemented, but ensure product_in/out don't affect it WRONGLY.
-                        // AND ensure product_in/out don't show up in Money In/Out.
-
-                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
-                        if (index === -1) return "-"
-
-                        let balance = 0
-                        for (let i = 0; i <= index; i++) {
-                          const t = sortedTransactions[i]
-                          let amount = t.amount || 0
-                          let sign = 0
-
-                          // Logic update:
-                          // product_in / product_out -> NO money effect.
-                          if (t.type === "product_in" || t.type === "product_out") {
-                            amount = 0;
-                          }
-
-                          if (t.type === "product_sale") sign = 1
-                          else if (t.type === "product_purchase") sign = -1
-                          else if (t.type === "cash_in" || t.type === "income") sign = -1
-                          else if (t.type === "cash_out" || t.type === "expense") sign = 1
-
-                          balance += (amount * sign)
-                        }
-
-                        if (balance > 0) {
-                          return (
-                            <span className="font-bold text-green-600">
-                              {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              {formatNumber(Math.abs(trans.amount))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
                             </span>
                           )
                         }
@@ -914,33 +888,14 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     {/* Money Bedehi (Payable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
                       {(() => {
-                        const index = sortedTransactions.findIndex(t => t.id === trans.id)
-                        if (index === -1) return "-"
-
-                        let balance = 0
-                        for (let i = 0; i <= index; i++) {
-                          const t = sortedTransactions[i]
-                          let amount = t.amount || 0
-                          let sign = 0
-
-                          // Logic update:
-                          // product_in / product_out -> NO money effect.
-                          if (t.type === "product_in" || t.type === "product_out") {
-                            amount = 0;
-                          }
-
-                          if (t.type === "product_sale") sign = 1
-                          else if (t.type === "product_purchase") sign = -1
-                          else if (t.type === "cash_in" || t.type === "income") sign = -1
-                          else if (t.type === "cash_out" || t.type === "expense") sign = 1
-
-                          balance += (amount * sign)
-                        }
-
-                        if (balance < 0) {
+                        // Product Purchase -> Red
+                        if (trans.type === "product_purchase" && trans.amount) {
                           return (
                             <span className="font-bold text-red-600">
-                              {formatNumber(Math.abs(balance))} {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              {formatNumber(Math.abs(trans.amount))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
                             </span>
                           )
                         }

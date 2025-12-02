@@ -226,12 +226,12 @@ export default function HomePage() {
           .slice(0, 10)
 
         return (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <h1 className="text-2xl md:text-3xl font-bold">{t("dashboard")}</h1>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card className="p-4 md:p-6 hover:shadow-lg transition-shadow">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Card className="p-3 md:p-4 hover:shadow-lg transition-shadow">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("totalCashBalanceUSD")}</h3>
                 <p className={`text-2xl md:text-3xl font-bold ${cashBalanceUSD >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   ${Math.abs(cashBalanceUSD).toLocaleString()}
@@ -400,8 +400,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-background" dir={lang === "fa" ? "rtl" : "ltr"}>
       <div className="flex min-h-screen">
         <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
-        <main className="flex-1 px-3 py-4 md:px-8 md:py-8 lg:px-10 lg:py-10 transition-all duration-300 overflow-hidden">
-          <div className="w-full mx-auto space-y-6">
+        <main className="flex-1 px-1 py-1 md:px-2 md:py-2 lg:px-3 lg:py-2 transition-all duration-300 overflow-hidden">
+          <div className="w-full mx-auto space-y-2">
             {renderContent()}
           </div>
         </main>
