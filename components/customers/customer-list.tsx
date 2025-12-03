@@ -127,7 +127,13 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
         return // Skip rest of processing for inventory
       }
 
-      if (transaction.customerId === customerId) {
+      // پردازش تراکنش‌ها: شامل تراکنش‌هایی که customerId یا accountId برابر است
+      // برای صندوق/بانک، باید accountId را هم بررسی کنیم
+      const isRelevantTransaction =
+        transaction.customerId === customerId ||
+        transaction.accountId === customerId
+
+      if (isRelevantTransaction) {
         // Debug log for bank accounts
         if (customerId.includes("bank") || customerId === "default-cash-safe") {
           console.log("Found transaction for account:", customerId, transaction)
@@ -138,39 +144,43 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
 
         switch (transaction.type) {
           case "product_purchase":
-            if (transaction.productTypeId) {
-              let amount = transaction.quantity || transaction.weight || 0
-              if (transaction.weight) {
-                switch (transaction.weightUnit) {
-                  case "mg": amount /= 1_000_000_000; break;
-                  case "g": amount /= 1_000_000; break;
-                  case "kg": amount /= 1_000; break;
-                  case "lb": amount /= 2204.62; break;
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) {
+                let amount = transaction.quantity || transaction.weight || 0
+                if (transaction.weight) {
+                  switch (transaction.weightUnit) {
+                    case "mg": amount /= 1_000_000_000; break;
+                    case "g": amount /= 1_000_000; break;
+                    case "kg": amount /= 1_000; break;
+                    case "lb": amount /= 2204.62; break;
+                  }
                 }
+                productDebts[transaction.productTypeId] =
+                  (productDebts[transaction.productTypeId] || 0) + amount
               }
-              productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) + amount
+              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
             }
-            cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
             break
           case "product_sale":
-            if (transaction.productTypeId) {
-              let amount = transaction.quantity || transaction.weight || 0
-              if (transaction.weight) {
-                switch (transaction.weightUnit) {
-                  case "mg": amount /= 1_000_000_000; break;
-                  case "g": amount /= 1_000_000; break;
-                  case "kg": amount /= 1_000; break;
-                  case "lb": amount /= 2204.62; break;
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) {
+                let amount = transaction.quantity || transaction.weight || 0
+                if (transaction.weight) {
+                  switch (transaction.weightUnit) {
+                    case "mg": amount /= 1_000_000_000; break;
+                    case "g": amount /= 1_000_000; break;
+                    case "kg": amount /= 1_000; break;
+                    case "lb": amount /= 2204.62; break;
+                  }
                 }
+                productDebts[transaction.productTypeId] =
+                  (productDebts[transaction.productTypeId] || 0) - amount
               }
-              productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) - amount
+              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
             }
-            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
             break
           case "product_in":
-            if (transaction.productTypeId) {
+            if (transaction.customerId === customerId && transaction.productTypeId) {
               let amount = transaction.quantity || transaction.weight || 0
               if (transaction.weight) {
                 switch (transaction.weightUnit) {
@@ -187,7 +197,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
             // product_in فقط کالا را منتقل می‌کند، نه پول
             break
           case "product_out":
-            if (transaction.productTypeId) {
+            if (transaction.customerId === customerId && transaction.productTypeId) {
               let amount = transaction.quantity || transaction.weight || 0
               if (transaction.weight) {
                 switch (transaction.weightUnit) {
@@ -201,19 +211,38 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
               productDebts[transaction.productTypeId] =
                 (productDebts[transaction.productTypeId] || 0) + amount
             }
-            // product_out فقط کالا را منتقل می‌کند، نه پول
             break
-          case "cash_in": // ورود وجه: بدهی نقدی مشتری کم میشود (مقدار منفی است، پس جمع می‌کنیم)
+          case "cash_in": // ورود وجه
+            // برای مشتری: بدهی کم می‌شود (پرداخت کرده)
             if (customerId === transaction.customerId) {
-              console.log("Calc Debt for", customerId, "Type:", transaction.type, "Amount:", transaction.amount, "Current Debt:", currentDebt)
+              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
             }
-            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            // برای صندوق/بانک: موجودی زیاد می‌شود (دریافت کرده)
+            if (transaction.accountId === customerId) {
+              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            }
             break
-          case "cash_out": // خروج وجه: بدهی نقدی مشتری زیاد میشود
-            cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+          case "cash_out": // خروج وجه
+            // برای مشتری: بدهی زیاد می‌شود (دریافت کرده)
+            if (customerId === transaction.customerId) {
+              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            }
+            // برای صندوق/بانک: موجودی کم می‌شود (پرداخت کرده)
+            if (transaction.accountId === customerId) {
+              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            }
             break
-          case "expense": // هزینه: من بدهکار آن حساب می‌شوم
-            cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+          case "expense":
+            // هزینه: فقط برای صندوق/بانک (accountId) موجودی کم می‌شود
+            if (transaction.accountId === customerId) {
+              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            }
+            break
+          case "income":
+            // درآمد: فقط برای صندوق/بانک (accountId) موجودی زیاد می‌شود
+            if (transaction.accountId === customerId) {
+              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            }
             break
         }
       }
@@ -776,7 +805,8 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                   <SortableHeader field="name">{t("name")}</SortableHeader>
                   <SortableHeader field="phone">{t("phone")}</SortableHeader>
                   <SortableHeader field="group">{t("group")}</SortableHeader>
-                  <SortableHeader field="cashDebts">{t("balance")}</SortableHeader>
+                  <SortableHeader field="cashDebts">{lang === "fa" ? "مانده پولی" : "Money Balance"}</SortableHeader>
+                  <TableHead>{lang === "fa" ? "موجودی کالا" : "Product Balance"}</TableHead>
                   <TableHead>{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -798,9 +828,9 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                     </TableCell>
                     <TableCell>{customer.phone}</TableCell>
                     <TableCell>{getGroupName(customer.groupId)}</TableCell>
+                    {/* Money Balance Column */}
                     <TableCell>
                       <div className="space-y-1">
-                        {/* Cash Debts */}
                         {Object.entries(customer.cashDebts).map(([currencyId, amount]) => {
                           if (amount === 0) return null
                           const currency = data.currencies?.find(c => c.id === currencyId)
@@ -818,8 +848,14 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                             </div>
                           )
                         })}
-
-                        {/* Product Debts */}
+                        {Object.values(customer.cashDebts).every(a => a === 0) && (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    {/* Product Balance Column */}
+                    <TableCell>
+                      <div className="space-y-1">
                         {Object.entries(customer.productDebts).map(
                           ([productTypeId, amount]) => {
                             if (amount === 0) return null
@@ -863,8 +899,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                             )
                           }
                         )}
-
-                        {Object.values(customer.cashDebts).every(a => a === 0) && Object.values(customer.productDebts).every(a => a === 0) && (
+                        {Object.values(customer.productDebts).every(a => a === 0) && (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </div>

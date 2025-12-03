@@ -58,8 +58,17 @@ export function CashInventory({ data }: CashInventoryProps) {
                     case "cash_out": // خروج وجه - بدهی من کم میشود
                         cashBalance += amt
                         break
-                    case "expense": // هزینه‌ها - من بدهکار می‌شوم
-                        cashBalance -= amt
+                    case "expense": // هزینه‌ها
+                        // فقط برای صندوق و بانک محاسبه شود
+                        if (customer.id === "default-cash-safe" || data.bankAccounts?.some(b => b.id === customer.id)) {
+                            cashBalance -= amt
+                        }
+                        break
+                    case "income": // درآمد
+                        // فقط برای صندوق و بانک محاسبه شود
+                        if (customer.id === "default-cash-safe" || data.bankAccounts?.some(b => b.id === customer.id)) {
+                            cashBalance += amt // درآمد به موجودی اضافه می‌شود (اگر cashBalance مثبت = موجودی)
+                        }
                         break
                 }
             })
@@ -125,9 +134,9 @@ export function CashInventory({ data }: CashInventoryProps) {
                 case "cash_out":        // خروج وجه از من → بدهی من کم می‌شود
                     delta = +amt
                     break
-                case "expense":         // هزینه → بدهکار
-                    delta = -amt
-                    break
+                // case "expense": // هزینه - طبق درخواست کاربر، اکسپنس نباید حساب مشتری را تغییر دهد
+                //     delta = -amt
+                //     break
                 default:
                     delta = 0
             }

@@ -154,6 +154,8 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       quantity: 0,
       weight: 0,
       amount: 0,
+      moneyIn: 0,  // Income, cash_in
+      moneyOut: 0, // Expense, cash_out
       count: subdocs.length
     }
 
@@ -161,6 +163,13 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       if (sub.quantity) totals.quantity += sub.quantity
       if (sub.weight) totals.weight += sub.weight
       if (sub.amount) totals.amount += sub.amount
+
+      // Separate money in/out based on transaction type
+      if (sub.type === "income" || sub.type === "cash_in") {
+        totals.moneyIn += sub.amount || 0
+      } else if (sub.type === "expense" || sub.type === "cash_out") {
+        totals.moneyOut += sub.amount || 0
+      }
     })
 
     return totals
@@ -205,19 +214,17 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           arrow: ArrowUp
         }
       case "expense":
-        return { label: t("expense"), icon: DollarSign, color: "bg-orange-100 text-orange-800", arrow: ArrowUp }
+        return { label: t("expense"), icon: DollarSign, color: "bg-green-100 text-green-800", arrow: ArrowUp }
       case "income":
-        return { label: t("income"), icon: DollarSign, color: "bg-emerald-100 text-emerald-800", arrow: ArrowDown }
+        return { label: t("income"), icon: DollarSign, color: "bg-red-100 text-red-800", arrow: ArrowDown }
       default:
         return { label: t("unknown"), icon: DollarSign, color: "bg-gray-100 text-gray-800", arrow: ArrowDown }
     }
   }
 
   const filteredTransactions = useMemo(() => {
-    return data.transactions.filter((transaction) => {
-      // فیلتر کردن زیرسندها - فقط سندهای اصلی و سندهای بدون parent را نمایش بده
-      if (transaction.parentDocumentId) return false
-
+    // ابتدا همه تراکنش‌ها را فیلتر کنیم (شامل main و sub)
+    const matchingTransactions = data.transactions.filter((transaction) => {
       const typeInfo = getTransactionTypeInfo(transaction)
       const customerName = getCustomerName(transaction.customerId)
       const productTypeName = getProductTypeName(transaction.productTypeId)
@@ -245,6 +252,22 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
       return matchesSearch && matchesType && matchesCustomer && matchesProductType && matchesAccountType
     })
+
+    // حالا فقط main documents را برگردان، اما اگر subdocument match شد، parent آن را هم include کن
+    const mainDocIds = new Set<string>()
+
+    matchingTransactions.forEach(t => {
+      if (t.parentDocumentId) {
+        // این یک subdocument است که match شده، parent آن را اضافه کن
+        mainDocIds.add(t.parentDocumentId)
+      } else {
+        // این یک main document است که match شده
+        mainDocIds.add(t.id)
+      }
+    })
+
+    // فقط main documents را برگردان
+    return data.transactions.filter(t => mainDocIds.has(t.id) && !t.parentDocumentId)
   }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType, showCashSafeDocs, showBankDocs, data.bankAccounts])
 
   const toggleExpand = (docId: string) => {
@@ -534,11 +557,19 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("allCustomers")}</SelectItem>
-            {data.customers.map((customer) => (
-              <SelectItem key={customer.id} value={customer.id}>
-                {customer.name}
-              </SelectItem>
-            ))}
+            {data.customers.map((customer) => {
+              let displayName = customer.name
+              if (customer.id === "default-cash-safe") {
+                displayName = lang === "fa" ? "صندوق" : "Cash Box"
+              } else if (customer.id === "default-warehouse") {
+                displayName = lang === "fa" ? "موجودی" : "Inventory"
+              }
+              return (
+                <SelectItem key={customer.id} value={customer.id}>
+                  {displayName}
+                </SelectItem>
+              )
+            })}
           </SelectContent>
         </Select>
         <Select value={filterProductType} onValueChange={setFilterProductType}>
@@ -875,26 +906,60 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
                     {/* Money Receipt (Cash In) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "cash_in" || trans.type === "income") ? (
-                        <span className="font-bold text-red-600">
-                          {formatNumber(Math.abs(trans.amount))}
-                          <span className="text-[10px] text-gray-500 ml-1">
-                            {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
-                          </span>
-                        </span>
-                      ) : "-"}
+                      {(() => {
+                        // For main documents, use moneyIn if available
+                        if (trans.moneyIn !== undefined && trans.moneyIn > 0) {
+                          return (
+                            <span className="font-bold text-red-600">
+                              {formatNumber(Math.abs(trans.moneyIn))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
+                            </span>
+                          )
+                        }
+                        // For regular transactions, check type
+                        if (trans.type === "cash_in" || trans.type === "income") {
+                          return (
+                            <span className="font-bold text-red-600">
+                              {formatNumber(Math.abs(trans.amount))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
+                            </span>
+                          )
+                        }
+                        return "-"
+                      })()}
                     </TableCell>
 
                     {/* Money Payment (Cash Out) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "cash_out" || trans.type === "expense") ? (
-                        <span className="font-bold text-green-600">
-                          {formatNumber(Math.abs(trans.amount))}
-                          <span className="text-[10px] text-gray-500 ml-1">
-                            {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
-                          </span>
-                        </span>
-                      ) : "-"}
+                      {(() => {
+                        // For main documents, use moneyOut if available
+                        if (trans.moneyOut !== undefined && trans.moneyOut > 0) {
+                          return (
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.abs(trans.moneyOut))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
+                            </span>
+                          )
+                        }
+                        // For regular transactions, check type
+                        if (trans.type === "cash_out" || trans.type === "expense") {
+                          return (
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.abs(trans.amount))}
+                              <span className="text-[10px] text-gray-500 ml-1">
+                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                              </span>
+                            </span>
+                          )
+                        }
+                        return "-"
+                      })()}
                     </TableCell>
 
                     {/* Money Talab (Receivable) */}
@@ -953,7 +1018,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     </TableCell>
                     <TableCell className="text-center p-2 sticky right-0 bg-background z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.1)]">
                       <div className="flex gap-0.5 justify-center">
-                        {onEdit && !isSubdoc && (
+                        {onEdit && (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(trans)}>
                             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path
@@ -965,25 +1030,25 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                             </svg>
                           </Button>
                         )}
-                        {!isSubdoc && (
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(trans.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        )}
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(trans.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 )
 
                 // For main documents, create an aggregated transaction to display totals
-                let displayTransaction = transaction
+                let displayTransaction: any = transaction
                 if (transaction.isMainDocument && hasSubdocs) {
                   const totals = getSubdocumentTotals(transaction.id)
                   displayTransaction = {
                     ...transaction,
                     quantity: totals.quantity || undefined,
                     weight: totals.weight || undefined,
-                    amount: totals.amount
+                    amount: totals.amount,
+                    moneyIn: totals.moneyIn,
+                    moneyOut: totals.moneyOut
                   }
                 }
 

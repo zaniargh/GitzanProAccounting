@@ -16,6 +16,7 @@ import { DateRangeReport } from "@/components/reports/date-range-report"
 import { CashInventory } from "@/components/cash-inventory/cash-inventory"
 import { TransactionList } from "@/components/transactions/transaction-list"
 import { DocumentsList } from "@/components/documents/documents-list"
+import { ForeignTransactions } from "@/components/foreign-transactions/foreign-transactions"
 import { Card } from "@/components/ui/card"
 import type { ProductType } from "@/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -372,6 +373,8 @@ export default function HomePage() {
         return <CashInventory data={data} />
       case "documents-list":
         return <DocumentsList data={data} onDataChange={saveData} />
+      case "foreign-transactions":
+        return <ForeignTransactions data={data} onDataChange={saveData} />
       case "reports":
         return (
           <div className="space-y-6">

@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Printer, Download, Edit, Trash2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { formatPersianDate, formatGregorianDate } from "@/lib/date-utils"
-import type { Transaction, Customer, CustomerGroup, ProductType } from "@/types"
+import type { Transaction, Customer, CustomerGroup, ProductType, Currency, BankAccount } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 const getAmountClass = (type: string) => {
   // نوع‌هایی که باید سبز باشند
@@ -85,6 +85,8 @@ interface DocumentsListProps {
     customers: Customer[]
     customerGroups: CustomerGroup[]
     productTypes: ProductType[]
+    currencies: Currency[]
+    bankAccounts: BankAccount[]
   }
   onDataChange: (data: any) => void
   onEdit?: (transaction: Transaction) => void
@@ -99,6 +101,8 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
   const [selectedGroup, setSelectedGroup] = useState("")
   const [showLast25Only, setShowLast25Only] = useState(false)
   const [filterProductType, setFilterProductType] = useState("all")
+  const [documentType, setDocumentType] = useState<"all" | "main" | "sub">("all") // فیلتر نوع سند
+  const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>([]) // فیلتر ارزها - خالی یعنی همه
 
   const [sortField, setSortField] = useState<string>("")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -196,29 +200,42 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
   // محاسبه running balance برای **همه** اسناد (بدون فیلتر) تا ته حساب درست باشه
   const runningBalancesMap = useMemo(() => {
-    const balanceMap = new Map<string, { cashBalance: number; productBalances: { [key: string]: number } }>()
-    const perCustomerBalance = new Map<string, {
-      cashBalance: number
+    const balanceMap = new Map<string, {
+      cashBalances: { [currencyId: string]: number }  // تغییر: از cashBalance به cashBalances
       productBalances: { [key: string]: number }
     }>()
+    const perCustomerBalance = new Map<string, {
+      cashBalances: { [currencyId: string]: number }  // تغییر: از cashBalance به cashBalances
+      productBalances: { [key: string]: number }
+    }>()
+
+    // پیدا کردن ارز پایه
+    const baseCurrencyId = data.currencies?.find(c => c.isBase)?.id || data.currencies?.[0]?.id || "default"
 
     // مرتب‌سازی همه اسناد بر اساس تاریخ
     const allTransactionsSorted = [...data.transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
     allTransactionsSorted.forEach((transaction) => {
       const customerId = transaction.customerId || "__NO_CUSTOMER__"
-      const currentBalance = perCustomerBalance.get(customerId) || { cashBalance: 0, productBalances: {} }
+      const currentBalance = perCustomerBalance.get(customerId) || { cashBalances: {}, productBalances: {} }
+
+      // تشخیص ارز این تراکنش
+      const currencyId = transaction.currencyId || baseCurrencyId
+      const amount = transaction.amount || 0
+
+      // گرفتن موجودی فعلی این ارز
+      const currentCashBalance = currentBalance.cashBalances[currencyId] || 0
 
       switch (transaction.type) {
         case "product_purchase":
-          currentBalance.cashBalance -= transaction.amount || 0
+          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
           if (transaction.productTypeId) {
             currentBalance.productBalances[transaction.productTypeId] =
               (currentBalance.productBalances[transaction.productTypeId] || 0) + (transaction.weight || 0)
           }
           break
         case "product_sale":
-          currentBalance.cashBalance += transaction.amount || 0
+          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           if (transaction.productTypeId) {
             currentBalance.productBalances[transaction.productTypeId] =
               (currentBalance.productBalances[transaction.productTypeId] || 0) - (transaction.weight || 0)
@@ -237,18 +254,21 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           }
           break
         case "cash_in":
-          currentBalance.cashBalance -= transaction.amount || 0
+          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
           break
         case "cash_out":
-          currentBalance.cashBalance += transaction.amount || 0
+          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           break
         case "expense":
-          currentBalance.cashBalance -= transaction.amount || 0
+          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
+          break
+        case "income":
+          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           break
       }
 
       balanceMap.set(transaction.id, {
-        cashBalance: currentBalance.cashBalance,
+        cashBalances: { ...currentBalance.cashBalances },  // تغییر: کپی تمام ارزها
         productBalances: { ...currentBalance.productBalances }
       })
 
@@ -256,11 +276,18 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     })
 
     return balanceMap
-  }, [data.transactions])
+  }, [data.transactions, data.currencies])
 
   // فیلتر اسناد (بعد از محاسبه running balance)
   const filteredTransactions = useMemo(() => {
     let filtered = [...data.transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+    // فیلتر نوع سند (اصلی/زیرسند/همه)
+    if (documentType === "main") {
+      filtered = filtered.filter((t) => t.isMainDocument === true)
+    } else if (documentType === "sub") {
+      filtered = filtered.filter((t) => t.parentDocumentId != null)
+    }
 
     // اول فیلترهای دیگه رو اعمال می‌کنیم
     if (dateFrom) {
@@ -270,7 +297,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       filtered = filtered.filter((t) => t.date <= dateTo)
     }
     if (selectedCustomer) {
-      filtered = filtered.filter((t) => t.customerId === selectedCustomer)
+      filtered = filtered.filter((t) => t.customerId === selectedCustomer || t.accountId === selectedCustomer)
     }
     if (selectedGroup) {
       const groupCustomers = data.customers.filter((c) => c.groupId === selectedGroup)
@@ -296,7 +323,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     }
 
     return filtered
-  }, [data.transactions, dateFrom, dateTo, selectedCustomer, selectedGroup, data.customers, showLast25Only, filterProductType])
+  }, [data.transactions, dateFrom, dateTo, selectedCustomer, selectedGroup, data.customers, showLast25Only, filterProductType, documentType])
 
   // Sorting با استفاده از balanceMap بهینه شده
   const sortedTransactions = useMemo(() => {
@@ -356,8 +383,11 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           bValue = b.description || ""
           break
         case "cashBalance":
-          aValue = runningBalancesMap.get(a.id)?.cashBalance || 0
-          bValue = runningBalancesMap.get(b.id)?.cashBalance || 0
+          // برای sorting از اولین ارز استفاده می‌کنیم
+          const aBalances = runningBalancesMap.get(a.id)?.cashBalances || {}
+          const bBalances = runningBalancesMap.get(b.id)?.cashBalances || {}
+          aValue = Object.values(aBalances)[0] || 0
+          bValue = Object.values(bBalances)[0] || 0
           break
         case "productBalance":
           const aProductBalance = a.productTypeId
@@ -370,7 +400,19 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           bValue = bProductBalance
           break
         default:
-          return 0
+          if (sortField.startsWith("balance_")) {
+            const currencyId = sortField.replace("balance_", "")
+            const aBalances = runningBalancesMap.get(a.id)?.cashBalances || {}
+            const bBalances = runningBalancesMap.get(b.id)?.cashBalances || {}
+            aValue = aBalances[currencyId] || 0
+            bValue = bBalances[currencyId] || 0
+          } else {
+            // @ts-ignore
+            aValue = a[sortField] || 0
+            // @ts-ignore
+            bValue = b[sortField] || 0
+          }
+          break
       }
 
       if (typeof aValue === "string") {
@@ -383,6 +425,17 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       return 0
     })
   }, [filteredTransactions, sortField, sortDirection, runningBalancesMap])
+
+  // تعیین ارزهایی که باید نمایش داده شوند
+  const displayCurrencies = useMemo(() => {
+    if (selectedCurrencies.length === 0) {
+      // نمایش همه ارزها
+      return data.currencies || []
+    } else {
+      // نمایش فقط ارزهای انتخاب شده
+      return (data.currencies || []).filter(c => selectedCurrencies.includes(c.id))
+    }
+  }, [selectedCurrencies, data.currencies])
 
   // محاسبه جمع کل
   const totals = useMemo(() => {
@@ -563,6 +616,312 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     printWindow.close()
   }
 
+  const handlePrintKurdish = () => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    const customer = selectedCustomer
+      ? data.customers.find((c) => c.id === selectedCustomer)
+      : null
+
+    const customerName = customer ? customer.name : "هەموو کڕیار"
+    const customerPhone = customer?.phone || ""
+
+    // پیدا کردن ارز پایه برای تشخیص ستون مبلغ
+    const baseCurrencyId = data.currencies?.find(c => c.isBase)?.id || data.currencies?.[0]?.id || "default"
+
+    const rowsHtml = sortedTransactions
+      .map((t) => {
+        const balances = runningBalancesMap.get(t.id)?.cashBalances || {}
+
+        const dollarClass =
+          t.type === "cash_out" || t.type === "product_sale" || t.type === "income" ? "green" :
+            t.type === "cash_in" || t.type === "product_purchase" || t.type === "expense" ? "red" : ""
+
+        const badge = (val: number) =>
+          val > 0
+            ? '<span class="badge green-badge">قەرز</span>'
+            : val < 0
+              ? '<span class="badge red-badge">بە قەرز</span>'
+              : '<span class="badge gray-badge">سفر</span>'
+
+        const kurdishTypes: Record<string, string> = {
+          product_purchase: "کڕینی کاڵا",
+          product_sale: "فرۆشتنی کاڵا",
+          product_in: "هاتنی کاڵا",
+          product_out: "چوونی کاڵا",
+          cash_in: "هاتنی پارە",
+          cash_out: "چوونی پارە",
+          expense: "خەرجی",
+          income: "داهات"
+        }
+
+        // تعیین نام ارز این تراکنش
+        const txCurrencyId = t.currencyId || baseCurrencyId
+        const txCurrency = data.currencies.find(c => c.id === txCurrencyId)
+        const currencyName = txCurrency ? txCurrency.name : "-"
+
+        return `
+        <tr>
+          <td>${t.documentNumber || "-"}</td>
+          <td>${kurdishTypes[t.type] || t.type}</td>
+          <td>${currencyName}</td>
+          ${displayCurrencies.map(c => {
+          // آیا مبلغ این تراکنش مربوط به این ستون ارز است؟
+          const isThisCurrency = c.id === txCurrencyId
+          // اگر بله، مبلغ را نشان بده، وگرنه خط تیره
+          if (isThisCurrency) {
+            return `<td><span class="${dollarClass}">${(t.amount || 0).toLocaleString("en-US")}</span></td>`
+          } else {
+            return `<td>-</td>`
+          }
+        }).join("")}
+          ${displayCurrencies.map(c => {
+          const bal = balances[c.id] || 0
+          return `<td>${bal.toLocaleString("en-US")} ${badge(bal)}</td>`
+        }).join("")}
+          <td>
+            <div class="ltr">${formatDateGregorian(t.date)}</div>
+          </td>
+          <td>${t.description || "-"}</td>
+        </tr>`
+      })
+      .join("")
+
+    printWindow.document.write(`
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ku">
+    <head>
+      <meta charset="UTF-8">
+      <title>لیستی بەڵگەنامەکان - ${customerName}</title>
+
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap" rel="stylesheet">
+      <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css" rel="stylesheet">
+
+      <style>
+        @page { margin: 10mm; }
+        body {
+          font-family: 'vazirmatn','Vazir', Arial, sans-serif;
+          direction: rtl;
+          background: white;
+          padding: 0;
+          margin: 0;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 20px;
+          background: #f0fdf4;
+          color: #1f2937;
+          padding: 20px;
+          border-radius: 12px;
+          border: 2px solid #059669;
+        }
+        h1 {
+          font-size: 28px;
+          margin: 0 0 10px;
+          font-weight: 800;
+          color: #059669;
+        }
+        .customer-name {
+          font-size: 24px;
+          color: #374151;
+          font-weight: 700;
+          margin: 5px 0;
+        }
+        .meta {
+          font-size: 14px;
+          color: #6b7280;
+          margin-top: 5px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+          margin-top: 20px;
+          background: white;
+        }
+        th, td {
+          border: 1px solid #e5e7eb;
+          padding: 8px 6px;
+          text-align: center;
+          vertical-align: middle;
+        }
+        th {
+          background: #059669;
+          color: white;
+          font-size: 13px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        tbody tr:nth-child(even) {
+          background-color: #f9fafb;
+        }
+        tbody tr:hover {
+          background-color: #f0fdf4;
+        }
+        .green {
+          color: #059669;
+          font-weight: 700;
+        }
+        .red {
+          color: #dc2626;
+          font-weight: 700;
+        }
+        .badge {
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          display: inline-block;
+          margin-right: 4px;
+        }
+        .green-badge {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .red-badge {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+        .gray-badge {
+          background: #f3f4f6;
+          color: #374151;
+        }
+        .small { font-size: 10px; }
+        .subtle { color: #9ca3af; }
+        .ltr { direction: ltr; }
+        .summary {
+          margin-top: 30px;
+          padding: 20px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          page-break-inside: avoid;
+        }
+        .summary h2 {
+          font-size: 18px;
+          margin: 0 0 15px;
+          text-align: right;
+          color: #334155;
+          font-weight: 700;
+          border-bottom: 2px solid #cbd5e1;
+          padding-bottom: 8px;
+        }
+        .summary-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 15px;
+          justify-content: flex-start;
+        }
+        .summary-item {
+          flex: 1;
+          min-width: 200px;
+          text-align: center;
+          padding: 15px;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .summary-label {
+          font-size: 13px;
+          color: #64748b;
+          margin-bottom: 8px;
+          font-weight: 600;
+        }
+        .summary-value {
+          font-size: 20px;
+          font-weight: 800;
+          direction: ltr;
+        }
+        .summary-value.positive { color: #059669; }
+        .summary-value.negative { color: #dc2626; }
+        .summary-status {
+          font-size: 12px;
+          font-weight: 600;
+          margin-top: 6px;
+          padding: 2px 8px;
+          border-radius: 12px;
+          display: inline-block;
+        }
+        .summary-status.positive { background: #dcfce7; color: #166534; }
+        .summary-status.negative { background: #fee2e2; color: #991b1b; }
+        .summary-status.zero { background: #f1f5f9; color: #64748b; }
+        .footer {
+          margin-top: 40px;
+          text-align: center;
+          color: #9ca3af;
+          font-size: 10px;
+          border-top: 1px solid #e5e7eb;
+          padding-top: 10px;
+          display: none;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>لیستی بەڵگەنامەکان</h1>
+        <div class="customer-name">
+          ${customerName}
+          ${customerPhone ? `<span style="font-size: 20px; margin-right: 10px; color: #dcfce7;">(${customerPhone})</span>` : ""}
+        </div>
+        <div class="meta">
+          ${dateFrom && dateTo ? `لە ${formatDate(dateFrom)} بۆ ${formatDate(dateTo)}` : ""}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ژمارە</th>
+            <th>جۆر</th>
+            <th>جۆری دراو</th>
+            ${displayCurrencies.map(c => `<th>بڕ ${c.name}</th>`).join("")}
+            ${displayCurrencies.map(c => `<th>ئاخیر حساب ${c.name}</th>`).join("")}
+            <th>بەروار</th>
+            <th>تێبینی</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+
+      <div class="summary">
+        <h2>گزارش حساب</h2>
+        <div class="summary-grid">
+          ${displayCurrencies.map(c => {
+      let finalBal = 0
+      if (sortedTransactions.length > 0) {
+        const lastTx = sortedTransactions[sortedTransactions.length - 1]
+        const lastBalMap = runningBalancesMap.get(lastTx.id)?.cashBalances
+        if (lastBalMap) finalBal = lastBalMap[c.id] || 0
+      }
+
+      return `
+              <div class="summary-item">
+                <div class="summary-label">ئەنقەد ${c.name} لامانە</div>
+                <div class="summary-value ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : ""}">${finalBal.toLocaleString("en-US")}</div>
+                <div class="summary-status ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : "zero"}">
+                  ${finalBal > 0 ? "قەرز" : finalBal < 0 ? "بە قەرز" : "سفر"}
+                </div>
+              </div>
+            `
+    }).join("")}
+        </div>
+      </div>
+    </body>
+    </html>
+    `)
+
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    printWindow.close()
+  }
+
 
 
   const handleExport = () => {
@@ -688,6 +1047,52 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">نوع سند</label>
+              <Select value={documentType} onValueChange={(value) => setDocumentType(value as "all" | "main" | "sub")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="همه اسناد" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">همه اسناد</SelectItem>
+                  <SelectItem value="main">فقط اسناد اصلی</SelectItem>
+                  <SelectItem value="sub">فقط زیرسندها</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">ارز</label>
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedCurrencies([])}
+                  className={selectedCurrencies.length === 0 ? "bg-blue-50" : ""}
+                >
+                  {selectedCurrencies.length === 0 ? "✓ " : ""}تمامی ارزها
+                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {data.currencies?.map((currency) => (
+                    <Button
+                      key={currency.id}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (selectedCurrencies.includes(currency.id)) {
+                          setSelectedCurrencies(selectedCurrencies.filter(id => id !== currency.id))
+                        } else {
+                          setSelectedCurrencies([...selectedCurrencies, currency.id])
+                        }
+                      }}
+                      className={selectedCurrencies.includes(currency.id) ? "bg-green-50 border-green-500" : ""}
+                    >
+                      {selectedCurrencies.includes(currency.id) ? "✓ " : ""}
+                      {currency.name} ({currency.symbol})
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
           <div className="flex gap-2 mt-4 flex-wrap">
             <Button
@@ -701,6 +1106,10 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
             <Button onClick={handlePrint} variant="outline" size="sm">
               <Printer className="h-4 w-4 ml-2" />
               چاپ
+            </Button>
+            <Button onClick={handlePrintKurdish} variant="outline" size="sm" className="bg-green-50 hover:bg-green-100">
+              <Printer className="h-4 w-4 ml-2" />
+              پرینت - کوردی
             </Button>
             <Button onClick={handleExport} variant="outline" size="sm">
               <Download className="h-4 w-4 ml-2" />
@@ -744,7 +1153,14 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                   <SortableHeader field="productSale">مقدار</SortableHeader>
                   <SortableHeader field="unitPrice">سعر</SortableHeader>
                   <SortableHeader field="amount">مبلغ</SortableHeader>
-                  <SortableHeader field="cashBalance">ت.حساب دلار</SortableHeader>
+
+                  {/* ستون‌های dynamic به ازای هر ارز */}
+                  {displayCurrencies.map(currency => (
+                    <SortableHeader key={currency.id} field={`balance_${currency.id}`}>
+                      ت.حساب {currency.name}
+                    </SortableHeader>
+                  ))}
+
                   <SortableHeader field="productBalance">ت.حساب محصول</SortableHeader>
                   <SortableHeader field="date">تاریخ</SortableHeader>
                   <SortableHeader field="description">توضیح</SortableHeader>
@@ -811,13 +1227,18 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
 
 
-                      {/* ته حساب دلاری + Badge */}
-                      <TableCell className="text-center text-xs p-2">
-                        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                          <span className="text-[10px]">{runningBalance ? runningBalance.cashBalance.toLocaleString() : "-"}</span>
-                          {runningBalance ? debtBadge(runningBalance.cashBalance) : null}
-                        </div>
-                      </TableCell>
+                      {/* ستون‌های dynamic ته حساب به ازای هر ارز */}
+                      {displayCurrencies.map(currency => {
+                        const balance = runningBalance?.cashBalances?.[currency.id] || 0
+                        return (
+                          <TableCell key={currency.id} className="text-center text-xs p-2">
+                            <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                              <span className="text-[10px]">{balance.toLocaleString()}</span>
+                              {debtBadge(balance)}
+                            </div>
+                          </TableCell>
+                        )
+                      })}
 
                       {/* ته حساب محصولی + Badge */}
                       <TableCell className="text-center text-xs p-2">

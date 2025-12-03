@@ -58,6 +58,8 @@ export interface Transaction {
   accountId?: string // حساب نقدی (Cash Box یا Bank Account) برای cash_in و cash_out
   isMainDocument?: boolean // آیا این سند اصلی است (دارای زیرسندها)
   parentDocumentId?: string // شناسه سند اصلی (فقط برای زیرسندها)
+  moneyIn?: number // مجموع درآمد/دریافتی از زیرسندها (فقط برای main documents)
+  moneyOut?: number // مجموع هزینه/پرداختی از زیرسندها (فقط برای main documents)
 }
 
 export interface Currency {
@@ -131,6 +133,22 @@ export interface Document {
   createdAt: string
 }
 
+export interface ForeignTransactionItem {
+  id: string
+  amount: number
+  amountDinar?: number
+  transactionDetails: string
+  date: string
+}
+
+export interface ForeignTransactionDocument {
+  id: string
+  customerName: string
+  phoneNumber: string
+  createdAt: string
+  items: ForeignTransactionItem[]
+}
+
 export interface AppData {
   customerGroups: CustomerGroup[]
   customers: Customer[]
@@ -141,8 +159,10 @@ export interface AppData {
   bulkTransactions: BulkTransaction[] // اضافه کردن bulkTransactions
   bulkTransactionsTehran?: any[] // اضافه کردن bulkTransactionsTehran
   documents: Document[] // اضافه کردن documents
+  foreignTransactions?: ForeignTransactionDocument[] // معاملات خارجی
   settings?: {
     baseCurrencyId?: string
     baseWeightUnit?: string
   }
+  lastUpdated?: number // Timestamp of last modification
 }

@@ -46,18 +46,52 @@ export async function writeDB(db: DBShape): Promise<void> {
     // Write to temporary file
     await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8")
 
-    // On Windows, we need to delete the target file first if it exists
+    // On Windows, rename can fail. Try multiple approaches
+    let success = false
+    let lastError: any = null
+
+    // Approach 1: Try direct rename after deleting target
     try {
-      await fs.unlink(p)
+      try {
+        await fs.unlink(p)
+      } catch (err: any) {
+        if (err.code !== 'ENOENT') {
+          throw err
+        }
+      }
+      await fs.rename(tmp, p)
+      success = true
     } catch (err: any) {
-      // Ignore if file doesn't exist
-      if (err.code !== 'ENOENT') {
-        throw err
+      lastError = err
+      // Continue to next approach
+    }
+
+    // Approach 2: If rename failed, try copy + delete
+    if (!success) {
+      try {
+        // Try to unlink again (maybe it was locked before)
+        try {
+          await fs.unlink(p)
+        } catch (err: any) {
+          if (err.code !== 'ENOENT') {
+            // File exists but can't delete - try copying over it anyway
+          }
+        }
+
+        // Copy temp file to target
+        await fs.copyFile(tmp, p)
+
+        // Delete temp file
+        await fs.unlink(tmp)
+        success = true
+      } catch (err: any) {
+        lastError = err
       }
     }
 
-    // Rename temp to final
-    await fs.rename(tmp, p)
+    if (!success) {
+      throw lastError || new Error("Failed to write database file")
+    }
   } catch (error) {
     // Clean up temp file if something goes wrong
     try {

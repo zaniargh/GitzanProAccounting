@@ -15,6 +15,7 @@ import {
     Wallet,
     TrendingUp,
     Coins,
+    Globe,
 } from "lucide-react"
 
 // ✅ اضافه‌شده: هوک زبان
@@ -31,13 +32,14 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
     const menuItems = [
         { id: "dashboard", labelKey: "dashboard", icon: Home },
+        { id: "transactions", labelKey: "documents", icon: FileText },
         { id: "customers", labelKey: "customers", icon: Users },
         { id: "bank-accounts", labelKey: "bankAccounts", icon: Wallet },
         { id: "currencies", labelKey: "currencies", icon: Coins },
         { id: "product-types", labelKey: "productTypes", icon: Package },
-        { id: "transactions", labelKey: "documents", icon: FileText },
         { id: "documents-list", labelKey: "documentsList", icon: FileText },
         { id: "cash-inventory", labelKey: "cashInventory", icon: Wallet },
+        { id: "foreign-transactions", labelKey: "foreignTransactions", icon: Globe },
         { id: "reports", labelKey: "reports", icon: BarChart3 },
         { id: "settings", labelKey: "settings", icon: Settings },
     ] as const
@@ -64,10 +66,10 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex flex-col gap-0.5">
                             <h2 className="text-base md:text-lg font-bold text-primary leading-tight">
-                                {t("appTitle")}
+                                {lang === "fa" ? "گیتزان حسابداری حرفه‌ای" : "Gitzan Accounting Pro"}
                             </h2>
                             <p className="text-[11px] md:text-xs text-muted-foreground">
-                                {lang === "fa" ? "مدیریت ساده حسابداری آرد و وجه" : "Lightweight flour & cash ledger"}
+                                {lang === "fa" ? "مدیریت حرفه‌ای حسابداری کالا و وجه" : "Professional product & cash accounting"}
                             </p>
                         </div>
                         <Button

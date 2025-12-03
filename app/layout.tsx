@@ -15,9 +15,8 @@ const vazirmatn = Vazirmatn({
 })
 
 export const metadata: Metadata = {
-    title: "سیستم حسابداری آرد",
-    description: "سیستم حسابداری خرید و فروش آرد",
-    generator: "v0.app",
+    title: "Gitzan Accounting Pro",
+    description: "Professional accounting system for product and cash management",
 }
 
 export default function RootLayout({

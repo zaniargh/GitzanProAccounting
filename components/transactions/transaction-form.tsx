@@ -57,6 +57,25 @@ const generateDocumentNumber = (transactions: Transaction[]): string => {
   return `${currentYear}-${nextNumber.toString().padStart(4, "0")}`
 }
 
+// Helper functions for number formatting with commas
+const formatNumberWithCommas = (value: string): string => {
+  // Remove all non-digit characters except decimal point
+  const cleanValue = value.replace(/[^\d.]/g, "")
+
+  // Split by decimal point
+  const parts = cleanValue.split(".")
+
+  // Add commas to integer part
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+
+  return parts.join(".")
+}
+
+const parseFormattedNumber = (value: string): string => {
+  // Remove commas and return clean number
+  return value.replace(/,/g, "")
+}
+
 export function TransactionForm({ data, onDataChange, productTypes = [] }: TransactionFormProps) {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [validationError, setValidationError] = useState<string>("")
@@ -162,6 +181,50 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
   // به درخواست شما، دیگر هیچ مشتری پیش‌فرضی به صورت خودکار ایجاد نمی‌شود.
 
   const handleEdit = (transaction: Transaction) => {
+    // اگر سند اصلی است، همه زیرسندها را به موقت ببر
+    if (transaction.isMainDocument) {
+      // پیدا کردن همه زیرسندها
+      const subdocs = data.transactions.filter(t => t.parentDocumentId === transaction.id)
+
+      // اضافه کردن زیرسندها به لیست موقت
+      const tempSubdocs = subdocs.map(subdoc => ({
+        ...subdoc,
+        id: crypto.randomUUID(), // ID جدید برای موقت
+      }))
+
+      setTemporaryTransactions([...temporaryTransactions, ...tempSubdocs])
+
+      // حذف سند اصلی و زیرسندها از transactions
+      const updatedTransactions = data.transactions.filter(t =>
+        t.id !== transaction.id && t.parentDocumentId !== transaction.id
+      )
+
+      onDataChange({
+        ...data,
+        transactions: updatedTransactions
+      })
+
+      // فرم را reset کن
+      setFormData({
+        type: "product_in",
+        customerId: transaction.customerId, // نگه داشتن مشتری
+        amount: "",
+        weight: "",
+        quantity: "",
+        unitPrice: "",
+        productTypeId: "",
+        description: "",
+        date: getLocalDateTime(),
+        currencyId: data.settings?.baseCurrencyId || "",
+        weightUnit: data.settings?.baseWeightUnit || "ton",
+        accountId: "default-cash-safe",
+      })
+
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+
+    // اگر زیرسند عادی است، مثل قبل ویرایش شود
     setEditingTransaction(transaction)
     setFormData({
       type: transaction.type,
@@ -246,22 +309,53 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       totalAmount = Number.parseFloat(formData.amount)
     }
 
+    // Auto-generate description for expense/income with account info
+    let finalDescription = formData.description
+    if ((formData.type === "expense" || formData.type === "income") && formData.accountId) {
+      // Get customer name
+      const customer = data.customers.find(c => c.id === formData.customerId)
+      const customerName = customer?.name || ""
+
+      // Get account name
+      let accountName = ""
+      if (formData.accountId === "default-cash-safe") {
+        accountName = lang === "fa" ? "صندوق" : "Cash Box"
+      } else {
+        const bankAccount = data.bankAccounts?.find(acc => acc.id === formData.accountId)
+        if (bankAccount) {
+          accountName = `${bankAccount.bankName} - ${bankAccount.accountNumber}`
+        }
+      }
+
+      const action = formData.type === "expense"
+        ? (lang === "fa" ? "پرداخت از" : "Paid from")
+        : (lang === "fa" ? "دریافت در" : "Received in")
+
+      // Include customer name if available
+      const customerPart = customerName ? `${lang === "fa" ? "مربوط به" : "Related to"}: ${customerName}` : ""
+      const autoDesc = customerPart
+        ? `${customerPart} - ${action}: ${accountName}`
+        : `${action}: ${accountName}`
+
+      finalDescription = finalDescription ? `${finalDescription} - ${autoDesc}` : autoDesc
+    }
+
     const tempTransaction: Transaction = {
       id: crypto.randomUUID(),
       documentNumber: `${nextDocumentNumber}-${temporaryTransactions.length + 1}`, // Temporary number
       type: formData.type,
-      customerId: formData.customerId,
+      customerId: formData.customerId, // نام مشتری اصلی نمایش داده می‌شود
       amount: totalAmount,
       weight: formData.weight ? Number.parseFloat(formData.weight) : undefined,
       quantity: formData.quantity ? Number.parseInt(formData.quantity) : undefined,
       unitPrice: formData.unitPrice ? Number.parseFloat(formData.unitPrice) : undefined,
       productTypeId: formData.productTypeId || undefined,
-      description: formData.description,
+      description: finalDescription,
       date: formData.date,
       createdAt: getLocalDateTime(),
       currencyId: formData.currencyId,
       weightUnit: formData.weightUnit,
-      accountId: formData.accountId,
+      accountId: formData.accountId, // برای expense/income، accountId مشخص می‌کند موجودی کدام حساب باید به‌روز شود
     }
 
     setTemporaryTransactions([...temporaryTransactions, tempTransaction])
@@ -964,7 +1058,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
           {/* Customer, Date & Document Number - Above Tabs */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
             <div>
-              <Label htmlFor="customer" className="text-xs mb-0.5 block">{formData.type === "expense" ? t("expenseType") : t("customer")}</Label>
+              <Label htmlFor="customer" className="text-xs mb-0.5 block">{t("customer")}</Label>
               <SearchableSelect
                 value={formData.customerId}
                 onValueChange={(value) => {
@@ -996,7 +1090,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                     keywords: [customer.customerCode || "", displayName, customer.phone, label]
                   }
                 })}
-                placeholder={formData.type === "expense" ? t("selectExpenseType") : t("selectCustomer")}
+                placeholder={t("selectCustomer")}
                 searchPlaceholder={lang === "fa" ? "جستجو..." : "Search..."}
                 emptyText={lang === "fa" ? "نتیجه‌ای یافت نشد" : "No results found"}
                 className={lang === "fa" ? "text-right h-9 text-sm" : "text-left h-9 text-sm"}
@@ -1056,8 +1150,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
 
           <div className="space-y-2">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              {/* Amount - Spans 3 columns (if applicable) */}
-              {(formData.type === "cash_in" || formData.type === "cash_out" || formData.type === "expense" || formData.type === "income") && (
+              {/* Amount - Only for cash_in and cash_out (expense and income use the field below with currency display) */}
+              {(formData.type === "cash_in" || formData.type === "cash_out") && (
                 <div className="md:col-span-3">
                   <Label htmlFor="amount" className="text-xs mb-1 block">{t("amount")}</Label>
                   <Input
@@ -1073,10 +1167,12 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               )}
 
               {/* Account Selector - Spans 2 columns (if applicable) */}
-              {(formData.type === "cash_in" || formData.type === "cash_out") && (
+              {(formData.type === "cash_in" || formData.type === "cash_out" || formData.type === "expense" || formData.type === "income") && (
                 <div className="md:col-span-2">
                   <Label htmlFor="accountId" className="text-xs mb-1 block">
-                    {formData.type === "cash_in" ? t("depositTo") : t("withdrawFrom")}
+                    {formData.type === "cash_in" || formData.type === "income"
+                      ? (lang === "fa" ? "واریز به" : "Deposit To")
+                      : (lang === "fa" ? "برداشت از" : "Withdraw From")}
                   </Label>
                   <SearchableSelect
                     value={formData.accountId}
@@ -1198,31 +1294,34 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                       <div className="relative">
                         <Input
                           id="unitPrice"
-                          type="number"
-                          step="0.01"
-                          value={formData.unitPrice}
+                          type="text"
+                          value={formData.unitPrice ? formatNumberWithCommas(formData.unitPrice) : ""}
                           onChange={(e) => {
-                            const unitPrice = e.target.value
+                            const cleaned = parseFormattedNumber(e.target.value)
                             setFormData(prev => {
-                              const newData = { ...prev, unitPrice }
-                              if (unitPrice) {
-                                const priceNum = Number.parseFloat(unitPrice)
+                              const newData = { ...prev, unitPrice: cleaned }
+
+                              // Auto-calculate amount if weight/quantity available
+                              if (cleaned && (prev.weight || prev.quantity)) {
+                                const priceNum = Number.parseFloat(cleaned)
                                 if (!isNaN(priceNum)) {
-                                  let total = 0
                                   if (prev.weight) {
                                     const weightNum = Number.parseFloat(prev.weight)
-                                    if (!isNaN(weightNum)) total = weightNum * priceNum
+                                    if (!isNaN(weightNum)) {
+                                      newData.amount = (weightNum * priceNum).toString()
+                                    }
                                   } else if (prev.quantity) {
                                     const qtyNum = Number.parseInt(prev.quantity)
-                                    if (!isNaN(qtyNum)) total = qtyNum * priceNum
+                                    if (!isNaN(qtyNum)) {
+                                      newData.amount = (qtyNum * priceNum).toString()
+                                    }
                                   }
-                                  if (total > 0) newData.amount = total.toString()
                                 }
                               }
                               return newData
                             })
                           }}
-                          className="text-right h-9 text-sm pl-8"
+                          className="text-right h-9 text-sm pr-12"
                         />
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
                           {data.currencies?.find(c => c.id === formData.currencyId)?.symbol || "$"}
@@ -1245,10 +1344,9 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                     </Label>
                     <Input
                       id="amount"
-                      type="number"
-                      step="0.01"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      type="text"
+                      value={formData.amount ? formatNumberWithCommas(formData.amount) : ""}
+                      onChange={(e) => setFormData({ ...formData, amount: parseFormattedNumber(e.target.value) })}
                       className="text-right h-9 text-sm"
                       required
                       readOnly={
@@ -1290,22 +1388,16 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               >
                 {t("temporarySubmit")}
               </Button>
-              <Button
-                type={temporaryTransactions.length > 0 ? "button" : "submit"}
-                className="flex-1 text-sm"
-                onClick={temporaryTransactions.length > 0 ? handleBatchSubmit : undefined}
-                disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
-              >
-                {temporaryTransactions.length > 0
-                  ? t("finalizeSubmission")
-                  : data.customers.length === 0
-                    ? t("defineCustomerFirst")
-                    : isFlourTransaction && productTypes.length === 0
-                      ? t("defineProductTypeFirst")
-                      : editingTransaction
-                        ? t("updateDocument")
-                        : t("submitDocument")}
-              </Button>
+              {temporaryTransactions.length > 0 && (
+                <Button
+                  type="button"
+                  className="flex-1 text-sm"
+                  onClick={handleBatchSubmit}
+                  disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
+                >
+                  {t("finalizeSubmission")}
+                </Button>
+              )}
             </div>
 
             {/* Temporary Documents Table */}
@@ -1363,11 +1455,11 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                           switch (tx.type) {
                             case "product_in":    // ورود کالا - ما بدهکار = قرمز
                             case "cash_in":       // دریافت وجه - بدهی مشتری کم میشه = قرمز
-                            case "expense":       // هزینه = قرمز
+                            case "income":        // درآمد/دریافتی = قرمز
                               return "text-red-600"
                             case "product_out":   // خروج کالا - مشتری بدهکار = سبز
                             case "cash_out":      // پرداخت وجه - بدهی مشتری زیاد میشه = سبز
-                            case "income":        // درآمد = سبز
+                            case "expense":       // هزینه/پرداختی = سبز
                               return "text-green-600"
                             case "product_purchase": // خرید - بستگی به مقدار دارد
                             case "product_sale":     // فروش - بستگی به مقدار دارد
@@ -1386,8 +1478,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             case "product_sale": return "bg-purple-100 text-purple-800"
                             case "cash_in": return "bg-green-100 text-green-800"
                             case "cash_out": return "bg-red-100 text-red-800"
-                            case "expense": return "bg-orange-100 text-orange-800"
-                            case "income": return "bg-emerald-100 text-emerald-800"
+                            case "expense": return "bg-green-100 text-green-800"
+                            case "income": return "bg-red-100 text-red-800"
                             default: return "bg-gray-100 text-gray-800"
                           }
                         }
