@@ -196,21 +196,22 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Vazirmatn', sans-serif; font-size: 20px; line-height: 1.4; color: #333; direction: rtl; padding: 20px; }
-          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-          .header h1 { font-size: 29px; font-weight: 700; margin-bottom: 5px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-          th, td { border: 1px solid #333; padding: 8px; text-align: center; font-size: 20px; }
-          th { background-color: #f5f5f5; font-weight: 600; }
-          .total-row { font-weight: bold; background-color: #eee; }
-          .footer { margin-top: 20px; text-align: center; font-size: 16px; color: #666; }
+          body { font-family: 'Vazirmatn', sans-serif; font-size: 20px; line-height: 1.6; color: #333; direction: rtl; padding: 40px; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #666; padding-bottom: 20px; }
+          .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.5px; color: #000; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; border: 2px solid #444; border-radius: 12px; overflow: hidden; }
+          th, td { border: 1px solid #ccc; padding: 12px 15px; text-align: center; font-size: 20px; }
+          th { background-color: #f0f0f0; font-weight: 700; border-bottom: 2px solid #444; color: #000; }
+          .total-row { font-weight: 800; background-color: #e8e8e8; font-size: 22px; color: #000; }
+          .total-row td { border-top: 2px solid #444; }
+          .footer { margin-top: 40px; text-align: center; font-size: 16px; color: #666; border-top: 1px solid #eee; padding-top: 10px; }
           @media print { body { padding: 0; } }
         </style>
       </head>
       <body>
         <div class="header">
           <h1>${customerName}</h1>
-          ${phoneNumber ? `<div style="font-size: 24px; margin-top: 5px;">ره قم موبایل: ${phoneNumber}</div>` : ""}
+          ${phoneNumber ? `<div style="font-size: 24px; margin-top: 10px; font-weight: 500; color: #444;">ره قم موبایل: ${phoneNumber}</div>` : ""}
         </div>
         
         <table>
@@ -371,24 +372,24 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
                         <div className="space-y-2">
                             <h3 className="font-semibold text-sm">{t("pendingItems")}</h3>
                             <div className="border rounded-md overflow-hidden">
-                                <Table>
+                                <Table className="border-collapse border">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>{t("amountDollar")}</TableHead>
-                                            <TableHead>{t("amountDinar")}</TableHead>
-                                            <TableHead>{t("transactionDetails")}</TableHead>
-                                            <TableHead>{t("date")}</TableHead>
-                                            <TableHead className="w-[50px]"></TableHead>
+                                            <TableHead className="border">{t("amountDollar")}</TableHead>
+                                            <TableHead className="border">{t("amountDinar")}</TableHead>
+                                            <TableHead className="border">{t("transactionDetails")}</TableHead>
+                                            <TableHead className="border">{t("date")}</TableHead>
+                                            <TableHead className="w-[50px] border"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {pendingItems.map((item) => (
                                             <TableRow key={item.id}>
-                                                <TableCell>{item.amount.toLocaleString()}</TableCell>
-                                                <TableCell>{(item.amountDinar || 0).toLocaleString()}</TableCell>
-                                                <TableCell>{item.transactionDetails || "-"}</TableCell>
-                                                <TableCell>{item.date}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="border">{item.amount.toLocaleString()}</TableCell>
+                                                <TableCell className="border">{(item.amountDinar || 0).toLocaleString()}</TableCell>
+                                                <TableCell className="border">{item.transactionDetails || "-"}</TableCell>
+                                                <TableCell className="border">{item.date}</TableCell>
+                                                <TableCell className="border">
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -451,20 +452,20 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto">
-                        <Table>
+                        <Table className="border-collapse border">
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>{t("customerName")}</TableHead>
-                                    <TableHead>{t("phoneNumber")}</TableHead>
-                                    <TableHead>{t("itemCount")}</TableHead>
-                                    <TableHead>{t("totalAmount")}</TableHead>
-                                    <TableHead>{t("actions")}</TableHead>
+                                    <TableHead className="border">{t("customerName")}</TableHead>
+                                    <TableHead className="border">{t("phoneNumber")}</TableHead>
+                                    <TableHead className="border">{t("itemCount")}</TableHead>
+                                    <TableHead className="border">{t("totalAmount")}</TableHead>
+                                    <TableHead className="border">{t("actions")}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {filteredDocuments.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground border">
                                             {t("noForeignTransactions")}
                                         </TableCell>
                                     </TableRow>
@@ -474,16 +475,16 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
                                         const totalDinar = (doc.items || []).reduce((sum, item) => sum + (item.amountDinar || 0), 0)
                                         return (
                                             <TableRow key={doc.id} className={editingDocumentId === doc.id ? "bg-muted/50" : ""}>
-                                                <TableCell>{doc.customerName}</TableCell>
-                                                <TableCell>{doc.phoneNumber || "-"}</TableCell>
-                                                <TableCell>{(doc.items || []).length}</TableCell>
-                                                <TableCell>
+                                                <TableCell className="border">{doc.customerName}</TableCell>
+                                                <TableCell className="border">{doc.phoneNumber || "-"}</TableCell>
+                                                <TableCell className="border">{(doc.items || []).length}</TableCell>
+                                                <TableCell className="border">
                                                     <div className="flex flex-col items-center gap-1">
                                                         <span>${totalDollar.toLocaleString()}</span>
                                                         <span className="text-xs text-muted-foreground">{totalDinar.toLocaleString()} IQD</span>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell className="border">
                                                     <div className="flex gap-2">
                                                         <Button
                                                             variant="ghost"
