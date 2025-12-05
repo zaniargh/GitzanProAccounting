@@ -97,7 +97,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
 
       // برای Inventory (انبار): همه تراکنش‌های product_in و product_out را محاسبه کن
       if (customerId === "default-warehouse") {
-        if (transaction.type === "product_in" && transaction.productTypeId) {
+        if ((transaction.type === "product_in" || transaction.type === "income") && transaction.productTypeId) {
           let amount = transaction.quantity || transaction.weight || 0
           if (transaction.weight) {
             switch (transaction.weightUnit) {
@@ -110,7 +110,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
           // کالا به انبار رسید
           productDebts[transaction.productTypeId] =
             (productDebts[transaction.productTypeId] || 0) + amount
-        } else if (transaction.type === "product_out" && transaction.productTypeId) {
+        } else if ((transaction.type === "product_out" || transaction.type === "expense") && transaction.productTypeId) {
           let amount = transaction.quantity || transaction.weight || 0
           if (transaction.weight) {
             switch (transaction.weightUnit) {

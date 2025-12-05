@@ -293,13 +293,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     }
 
     if (isFlourTransaction && !formData.productTypeId) {
-      // For receivable/payable, if we have an amount, we don't strictly need a product type
+      // For receivable/payable/expense/income, if we have an amount, we don't strictly need a product type
       // unless the user has started entering weight/quantity
-      const isReceivablePayable = formData.type === "receivable" || formData.type === "payable";
+      const isFlexibleType = ["receivable", "payable", "expense", "income"].includes(formData.type);
       const hasAmount = formData.amount && formData.amount.trim() !== "";
       const hasProductDetails = (formData.weight && formData.weight.trim() !== "") || (formData.quantity && formData.quantity.trim() !== "");
 
-      if (isReceivablePayable && hasAmount && !hasProductDetails) {
+      if (isFlexibleType && hasAmount && !hasProductDetails) {
         // Valid case: Amount only, no product details
       } else {
         setValidationError(t("productTypeRequired"))
@@ -427,7 +427,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       type: mainType,
       customerId: temporaryTransactions[0].customerId,
       amount: 0,
-      description: `${t("temporaryDocuments")} - ${customerName} (${temporaryTransactions.length} ${t("items")})`,
+      description: `${temporaryTransactions.length} ${t("items")}`,
       date: formData.date,
       createdAt: getLocalDateTime(),
       currencyId: temporaryTransactions[0].currencyId,
@@ -1023,7 +1023,9 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     formData.type === "product_purchase" ||
     formData.type === "product_sale" ||
     formData.type === "receivable" ||
-    formData.type === "payable"
+    formData.type === "payable" ||
+    formData.type === "expense" ||
+    formData.type === "income"
 
   const getFilteredCustomers = () => {
     return data.customers
@@ -1271,9 +1273,36 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                 </div>
               )}
 
+              {/* Amount Field for Expense/Income/Receivable/Payable - Placed above Goods section */}
+              {(formData.type === "expense" || formData.type === "income" || formData.type === "receivable" || formData.type === "payable") && (
+                <div className="md:col-span-3">
+                  <Label htmlFor="amount" className="text-xs mb-1 block">
+                    {t("amount")} ({data.currencies?.find(c => c.id === formData.currencyId)?.name || "Currency"})
+                  </Label>
+                  <Input
+                    id="amount"
+                    type="text"
+                    value={formData.amount ? formatNumberWithCommas(formData.amount) : ""}
+                    onChange={(e) => setFormData({ ...formData, amount: parseFormattedNumber(e.target.value) })}
+                    className="text-right h-9 text-sm"
+                    required
+                  />
+                </div>
+              )}
+
               {/* Product Fields */}
               {isFlourTransaction && (
                 <>
+                  {/* Separator for Expense/Income/Receivable/Payable to separate money from goods */}
+                  {(formData.type === "expense" || formData.type === "income" || formData.type === "receivable" || formData.type === "payable") && (
+                    <div className="md:col-span-12 flex items-center gap-2 my-2">
+                      <div className="h-px bg-border flex-1"></div>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        | {lang === "fa" ? "انتخاب کالا" : "Product Selection"} |
+                      </span>
+                      <div className="h-px bg-border flex-1"></div>
+                    </div>
+                  )}
                   <div className="md:col-span-3">
                     <Label htmlFor="productType" className="text-xs mb-1 block">{t("productType")}</Label>
                     <SearchableSelect
@@ -1412,11 +1441,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               )}
 
               {(formData.type === "product_purchase" ||
-                formData.type === "product_sale" ||
-                formData.type === "expense" ||
-                formData.type === "income" ||
-                formData.type === "receivable" ||
-                formData.type === "payable") && (
+                formData.type === "product_sale") && (
                   <div className={isFlourTransaction ? "md:col-span-2" : "md:col-span-3"}>
                     <Label htmlFor="amount" className="text-xs mb-1 block">
                       {formData.type === "product_purchase" || formData.type === "product_sale"
@@ -1429,9 +1454,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                       value={formData.amount ? formatNumberWithCommas(formData.amount) : ""}
                       onChange={(e) => setFormData({ ...formData, amount: parseFormattedNumber(e.target.value) })}
                       className="text-right h-9 text-sm"
-                      required={
-                        formData.type !== "receivable" && formData.type !== "payable"
-                      }
+                      required
                       readOnly={
                         (formData.type === "product_purchase" || formData.type === "product_sale") &&
                         (!!formData.weight || !!formData.quantity) &&
@@ -1598,7 +1621,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                             </td>
                             {/* Goods Receipt (Product In) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "product_in") && (tx.weight || tx.quantity) ? (
+                              {((tx.type === "product_in" || tx.type === "income") && (tx.weight || tx.quantity)) ? (
                                 <span className="font-medium text-red-600">
                                   {tx.quantity ? (
                                     <>
@@ -1619,7 +1642,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
 
                             {/* Goods Issue (Product Out) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "product_out") && (tx.weight || tx.quantity) ? (
+                              {((tx.type === "product_out" || tx.type === "expense") && (tx.weight || tx.quantity)) ? (
                                 <span className="font-medium text-green-600">
                                   {tx.quantity ? (
                                     <>
@@ -1638,13 +1661,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                               ) : "-"}
                             </td>
 
-                            {/* Goods Credit (Payable/Payable) */}
+                            {/* Goods Debit (Receivable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                if ((tx.type === "product_purchase" || tx.type === "payable") && (tx.quantity || tx.weight)) {
+                                if ((tx.type === "product_purchase" || tx.type === "receivable") && (tx.quantity || tx.weight)) {
                                   const val = tx.quantity || tx.weight || 0;
                                   return (
-                                    <span className="font-medium text-red-600">
+                                    <span className="font-medium text-green-600">
                                       {formatNumber(Math.abs(val))}
                                       <span className="text-[10px] text-gray-500 ml-1">
                                         ({tx.weight ? (tx.weightUnit || "ton") : "Count"})
@@ -1656,13 +1679,13 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                               })()}
                             </td>
 
-                            {/* Goods Debit (Receivable/Receivable) */}
+                            {/* Goods Credit (Payable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
                               {(() => {
-                                if ((tx.type === "product_sale" || tx.type === "receivable") && (tx.quantity || tx.weight)) {
+                                if ((tx.type === "product_sale" || tx.type === "payable") && (tx.quantity || tx.weight)) {
                                   const val = tx.quantity || tx.weight || 0;
                                   return (
-                                    <span className="font-medium text-green-600">
+                                    <span className="font-medium text-red-600">
                                       {formatNumber(Math.abs(val))}
                                       <span className="text-[10px] text-gray-500 ml-1">
                                         ({tx.weight ? (tx.weightUnit || "ton") : "Count"})
@@ -1698,21 +1721,9 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                               ) : "-"}
                             </td>
 
-                            {/* Money Credit (Payable/Payable) */}
+                            {/* Money Debit (Receivable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "payable") && tx.amount ? (
-                                <span className="font-bold text-red-600">
-                                  {formatNumber(Math.abs(tx.amount))}
-                                  <span className="text-[10px] text-gray-500 ml-1">
-                                    {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
-                                  </span>
-                                </span>
-                              ) : "-"}
-                            </td>
-
-                            {/* Money Debit (Receivable/Receivable) */}
-                            <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(tx.type === "receivable") && tx.amount ? (
+                              {((tx.type === "receivable" || tx.type === "product_sale") && tx.amount) ? (
                                 <span className="font-bold text-green-600">
                                   {formatNumber(Math.abs(tx.amount))}
                                   <span className="text-[10px] text-gray-500 ml-1">
@@ -1722,41 +1733,18 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                               ) : "-"}
                             </td>
 
-                            {/* Money Receivable (Receivable) */}
+                            {/* Money Credit (Payable) */}
                             <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(() => {
-                                // Product Sale -> Green
-                                if (tx.type === "product_sale" && tx.amount) {
-                                  return (
-                                    <span className="font-bold text-green-600">
-                                      {formatNumber(Math.abs(tx.amount))}
-                                      <span className="text-[10px] text-gray-500 ml-1">
-                                        {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
-                                      </span>
-                                    </span>
-                                  )
-                                }
-                                return "-"
-                              })()}
+                              {((tx.type === "payable" || tx.type === "product_purchase") && tx.amount) ? (
+                                <span className="font-bold text-red-600">
+                                  {formatNumber(Math.abs(tx.amount))}
+                                  <span className="text-[10px] text-gray-500 ml-1">
+                                    {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
+                                  </span>
+                                </span>
+                              ) : "-"}
                             </td>
 
-                            {/* Money Bedehi (Payable) */}
-                            <td className="text-center p-2 whitespace-nowrap text-xs">
-                              {(() => {
-                                // Product Purchase -> Red
-                                if (tx.type === "product_purchase" && tx.amount) {
-                                  return (
-                                    <span className="font-bold text-red-600">
-                                      {formatNumber(Math.abs(tx.amount))}
-                                      <span className="text-[10px] text-gray-500 ml-1">
-                                        {data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"}
-                                      </span>
-                                    </span>
-                                  )
-                                }
-                                return "-"
-                              })()}
-                            </td>
                             <td className="text-center p-2 text-[10px] sticky right-0 bg-background z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.1)]">
                               {lang === "fa" ? (
                                 <div>
@@ -1814,8 +1802,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               </div>
             )}
           </div>
-        </form>
-      </Card>
+        </form >
+      </Card >
 
       <div>
         <h3 className="text-lg font-semibold mb-4">{t("lastRegisteredDocuments")}</h3>

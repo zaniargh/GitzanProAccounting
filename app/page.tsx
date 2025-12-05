@@ -370,7 +370,7 @@ export default function HomePage() {
       case "transactions":
         return <TransactionForm data={data} onDataChange={saveData} productTypes={productTypes} />
       case "cash-inventory":
-        return <CashInventory data={data} />
+        return <CashInventory data={data} productTypes={productTypes} />
       case "documents-list":
         return <DocumentsList data={data} onDataChange={saveData} />
       case "foreign-transactions":

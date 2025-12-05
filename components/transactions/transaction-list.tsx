@@ -80,8 +80,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
   const [filterCustomer, setFilterCustomer] = useState("all")
   const [filterProductType, setFilterProductType] = useState("all")
   const [displayWeightUnit, setDisplayWeightUnit] = useState("original")
-  const [showCashSafeDocs, setShowCashSafeDocs] = useState(true)
-  const [showBankDocs, setShowBankDocs] = useState(true)
+
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set()) // Track which main docs are expanded
 
   const convertWeight = (weight: number, fromUnit: string, toUnit: string) => {
@@ -203,8 +202,8 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       }
 
       // Goods Logic
-      if (sub.type === "product_in") addGoods(totals.goodsIn)
-      if (sub.type === "product_out") addGoods(totals.goodsOut)
+      if (sub.type === "product_in" || sub.type === "income") addGoods(totals.goodsIn)
+      if (sub.type === "product_out" || sub.type === "expense") addGoods(totals.goodsOut)
       if ((sub.type === "product_purchase" || sub.type === "payable") && (sub.weight || sub.quantity)) addGoods(totals.goodsCredit)
       if ((sub.type === "product_sale" || sub.type === "receivable") && (sub.weight || sub.quantity)) addGoods(totals.goodsDebit)
 
@@ -334,17 +333,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       const matchesCustomer = filterCustomer === "all" || transaction.customerId === filterCustomer
       const matchesProductType = filterProductType === "all" || transaction.productTypeId === filterProductType
 
-      // Bank & Cash Safe Filters
-      const isCashSafe = transaction.customerId === "default-cash-safe"
-      const isBank = data.bankAccounts?.some(b => b.id === transaction.customerId)
 
-      let matchesAccountType = true
-      if (filterCustomer === "all") {
-        if (isCashSafe && !showCashSafeDocs) matchesAccountType = false
-        if (isBank && !showBankDocs) matchesAccountType = false
-      }
 
-      return matchesSearch && matchesType && matchesCustomer && matchesProductType && matchesAccountType
+      return matchesSearch && matchesType && matchesCustomer && matchesProductType
     })
 
     // حالا فقط main documents را برگردان، اما اگر subdocument match شد، parent آن را هم include کن
@@ -362,7 +353,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
 
     // فقط main documents را برگردان
     return data.transactions.filter(t => mainDocIds.has(t.id) && !t.parentDocumentId)
-  }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType, showCashSafeDocs, showBankDocs, data.bankAccounts])
+  }, [data.transactions, searchTerm, filterType, filterCustomer, filterProductType, data.bankAccounts])
 
   const toggleExpand = (docId: string) => {
     setExpandedDocs(prev => {
@@ -471,8 +462,18 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
           bValue = b.amount
           break
         case "date":
-          aValue = new Date(a.date || a.createdAt).getTime()
-          bValue = new Date(b.date || b.createdAt).getTime()
+          const dateA = a.date || a.createdAt || ""
+          const dateB = b.date || b.createdAt || ""
+          // Simple string comparison works for ISO dates (YYYY-MM-DDTHH:mm)
+          // If not ISO, try timestamp
+          if (dateA === dateB) {
+            // If dates are equal, sort by creation time (if available) or ID to ensure stable sort
+            aValue = a.createdAt || a.id
+            bValue = b.createdAt || b.id
+          } else {
+            aValue = dateA
+            bValue = dateB
+          }
           break
         case "description":
           aValue = a.description
@@ -694,29 +695,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         </Select>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="flex items-center space-x-2 rtl:space-x-reverse">
-          <Checkbox
-            id="showCashSafe"
-            checked={showCashSafeDocs}
-            onCheckedChange={(checked) => setShowCashSafeDocs(checked as boolean)}
-          />
-          <Label htmlFor="showCashSafe" className="text-sm cursor-pointer">
-            {lang === "fa" ? "نمایش اسناد صندوق" : "Show Cash Box Docs"}
-          </Label>
-        </div>
 
-        <div className="flex items-center space-x-2 rtl:space-x-reverse">
-          <Checkbox
-            id="showBankDocs"
-            checked={showBankDocs}
-            onCheckedChange={(checked) => setShowBankDocs(checked as boolean)}
-          />
-          <Label htmlFor="showBankDocs" className="text-sm cursor-pointer">
-            {lang === "fa" ? "نمایش اسناد بانکی" : "Show Bank Docs"}
-          </Label>
-        </div>
-      </div>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -912,7 +891,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       {!isSubdoc && mainDocTotals ? (
                         renderAggregatedGoods(mainDocTotals.goodsIn, "text-red-600", mainDocTotals.weightUnit)
                       ) : (
-                        (trans.type === "product_in") && (trans.weight || trans.quantity) ? (
+                        ((trans.type === "product_in" || trans.type === "income") && (trans.weight || trans.quantity)) ? (
                           <span className="font-medium text-red-600">
                             {trans.quantity ? (
                               <>
@@ -944,7 +923,7 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                       {!isSubdoc && mainDocTotals ? (
                         renderAggregatedGoods(mainDocTotals.goodsOut, "text-green-600", mainDocTotals.weightUnit)
                       ) : (
-                        (trans.type === "product_out") && (trans.weight || trans.quantity) ? (
+                        ((trans.type === "product_out" || trans.type === "expense") && (trans.weight || trans.quantity)) ? (
                           <span className="font-medium text-green-600">
                             {trans.quantity ? (
                               <>

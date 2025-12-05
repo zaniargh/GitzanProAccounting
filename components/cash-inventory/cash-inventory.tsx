@@ -19,10 +19,10 @@ import type { AppData } from "@/types"
 
 interface CashInventoryProps {
     data: AppData
+    productTypes: ProductType[]
 }
 
-export function CashInventory({ data }: CashInventoryProps) {
-    const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
+export function CashInventory({ data, productTypes }: CashInventoryProps) {
 
     // محاسبه موجودی نقدی (با حذف سه مشتری خاص)
     const calculateCashInventory = () => {
@@ -193,11 +193,13 @@ export function CashInventory({ data }: CashInventoryProps) {
                 switch (transaction.type) {
                     case "product_purchase":
                     case "product_in":
-                        warehouseInventory[transaction.productTypeId] += transaction.weight || 0
+                    case "income":
+                        warehouseInventory[transaction.productTypeId] += transaction.weight || transaction.quantity || 0
                         break
                     case "product_sale":
                     case "product_out":
-                        warehouseInventory[transaction.productTypeId] -= transaction.weight || 0
+                    case "expense":
+                        warehouseInventory[transaction.productTypeId] -= transaction.weight || transaction.quantity || 0
                         break
                 }
             }
