@@ -181,6 +181,145 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
   // قبلاً اینجا مشتری‌های هزینه به صورت خودکار ساخته می‌شدند.
   // به درخواست شما، دیگر هیچ مشتری پیش‌فرضی به صورت خودکار ایجاد نمی‌شود.
 
+  const customerBalance = useMemo(() => {
+    if (!formData.customerId) return null;
+
+    const cashDebts: { [currencyId: string]: number } = {}
+    const productDebts: { [key: string]: number } = {}
+    const customerId = formData.customerId
+
+    // Robust Weight Conversion setup
+    const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase()
+    const toGrams: Record<string, number> = {
+      mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+      "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+    };
+    const baseFactor = toGrams[baseUnit] || 1000000;
+
+    data.transactions.forEach((transaction) => {
+      if (transaction.isMainDocument) return
+
+      // Logic for Inventory
+      if (customerId === "default-warehouse") {
+        if ((transaction.type === "product_in" || transaction.type === "income") && transaction.productTypeId) {
+          let amount = transaction.quantity || transaction.weight || 0
+          if (transaction.weight) {
+            const u = (transaction.weightUnit as string || "ton").toLowerCase();
+            const txFactor = toGrams[u] || 1000000;
+            amount = (amount * txFactor) / baseFactor;
+          }
+          productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+        } else if ((transaction.type === "product_out" || transaction.type === "expense") && transaction.productTypeId) {
+          let amount = transaction.quantity || transaction.weight || 0
+          if (transaction.weight) {
+            const u = (transaction.weightUnit as string || "ton").toLowerCase();
+            const txFactor = toGrams[u] || 1000000;
+            amount = (amount * txFactor) / baseFactor;
+          }
+          productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
+        }
+        return
+      }
+
+      // Logic for Regular Customers
+      const isRelevant = transaction.customerId === customerId || transaction.accountId === customerId
+      if (isRelevant) {
+        const currencyId = transaction.currencyId || "default"
+        const currentDebt = cashDebts[currencyId] || 0
+
+        let amount = transaction.quantity || transaction.weight || 0
+        if (transaction.weight) {
+          const u = (transaction.weightUnit as string || "ton").toLowerCase();
+          const txFactor = toGrams[u] || 1000000;
+          amount = (amount * txFactor) / baseFactor;
+        }
+
+        switch (transaction.type) {
+          case "product_purchase":
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
+              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            }
+            break
+          case "product_sale":
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            }
+            break
+          case "product_in":
+            if (transaction.customerId === customerId && transaction.productTypeId) {
+              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
+            }
+            break
+          case "product_out":
+            if (transaction.customerId === customerId && transaction.productTypeId) {
+              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+            }
+            break
+          case "cash_in":
+            if (customerId === transaction.customerId) cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            if (transaction.accountId === customerId) cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            break
+          case "cash_out":
+            if (customerId === transaction.customerId) cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            if (transaction.accountId === customerId) cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            break
+          case "expense":
+            if (transaction.accountId === customerId) cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
+            break
+          case "income":
+            if (transaction.accountId === customerId) cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
+            break
+          case "receivable":
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+              if (transaction.amount) cashDebts[currencyId] = currentDebt + transaction.amount
+            }
+            break
+          case "payable":
+            if (transaction.customerId === customerId) {
+              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount // Payable stored as negative logic? Checking customer-list logic...
+              // Re-checking customer-list logic: it adds payable (which is usually negative in db? No, amount is unsigned, let's verify logic)
+              // In customer-list.tsx: 
+              // case "payable":  if (amount) cashDebts += amount
+              // Actually in customer list line 283: productDebts[...] = ... + amount
+              // And line 286: cashDebts[...] = currentDebt + transaction.amount
+              // Wait, "payable" means "Bedehi" (Debt). Logic in customer list says:
+              // "Bedehi: bedehi moshtari kam mishavad (manfi)" -> BUT the code adds it?
+              // Let's re-read step 1702 carefully.
+              // Line 271: "Bedehi: bedehi moshtari kam mishavad (manfi)"
+              // Line 283: productDebts = ... + amount
+              // Wait, if it reduces debt, it should be -, unless amount is negative?
+              // Usually amount is positive.
+              // In `customer-list.tsx` line 269: case payable...
+              // line 286: cashDebts = currentDebt + transaction.amount
+              // If payable reduces debt, why +?
+              // Maybe "Payable" type in this system means "We pay customer"?
+              // No, "Payable" = "Bedehi" (Liability). "Receivable" = "Talab" (Asset).
+              // User fixed this logic in Step 1438 (summary).
+              // "Corrected the payable logic... payable amounts are stored as negative values"?
+              // If stored as negative, then adding it reduces the total.
+              // Let's assume transaction.amount is negative for payable if the user said so.
+              // But wait, in the form input (amount), does it allow negative?
+              // In `customer-list.tsx` snippet provided in 1702:
+              // line 286: `cashDebts[currencyId] = currentDebt + transaction.amount`
+              // This implies `transaction.amount` carries the sign.
+              // I will assume simple addition here mirrors the logic effectively.
+
+              // Wait, simpler approach: Just copy EXACTLY what is in customer-list.tsx.
+              // In customer-list.tsx: 
+              // productDebts[...] = ... + amount
+              // cashDebts[...] = ... + transaction.amount
+              if (transaction.amount) cashDebts[currencyId] = currentDebt + transaction.amount
+            }
+            break
+        }
+      }
+    })
+    return { cashDebts, productDebts }
+  }, [data.transactions, formData.customerId, formData.accountId])
+
   const handleEdit = (transaction: Transaction) => {
     // اگر سند اصلی است، همه زیرسندها را به موقت ببر
     if (transaction.isMainDocument) {
@@ -293,14 +432,21 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       }
     }
 
-    if (isFlourTransaction && !formData.productTypeId) {
+    // Validation: Product Type must be selected for product transactions
+    // If there is ANY weight or quantity, Product Type is REQUIRED.
+    const hasProductDetails = (formData.weight && formData.weight.trim() !== "") || (formData.quantity && formData.quantity.trim() !== "");
+    if (hasProductDetails && !formData.productTypeId) {
+      setValidationError(t("productTypeRequired"));
+      return;
+    }
+
+    // Legacy/Flexible check for Amount-Only transactions
+    if (isFlourTransaction && !formData.productTypeId && !hasProductDetails) {
       // For receivable/payable/expense/income, if we have an amount, we don't strictly need a product type
-      // unless the user has started entering weight/quantity
       const isFlexibleType = ["receivable", "payable", "expense", "income"].includes(formData.type);
       const hasAmount = formData.amount && formData.amount.trim() !== "";
-      const hasProductDetails = (formData.weight && formData.weight.trim() !== "") || (formData.quantity && formData.quantity.trim() !== "");
 
-      if (isFlexibleType && hasAmount && !hasProductDetails) {
+      if (isFlexibleType && hasAmount) {
         // Valid case: Amount only, no product details
       } else {
         setValidationError(t("productTypeRequired"))
@@ -526,16 +672,21 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
     }
 
     // Validation: Product Type must be selected for product transactions
-    // Exception: receivable/payable don't need product type if they are amount-only
-    if (isFlourTransaction && !formData.productTypeId) {
-      // For receivable/payable, if we have an amount, we don't strictly need a product type
-      // unless the user has started entering weight/quantity
-      const isReceivablePayable = formData.type === "receivable" || formData.type === "payable";
-      const hasAmount = formData.amount && formData.amount.trim() !== "";
-      const hasProductDetails = (formData.weight && formData.weight.trim() !== "") || (formData.quantity && formData.quantity.trim() !== "");
+    // If there is ANY weight or quantity, Product Type is REQUIRED.
+    const hasProductDetails = (formData.weight && formData.weight.trim() !== "") || (formData.quantity && formData.quantity.trim() !== "");
+    if (hasProductDetails && !formData.productTypeId) {
+      setValidationError(t("productTypeRequired"));
+      return;
+    }
 
-      if (isReceivablePayable && hasAmount && !hasProductDetails) {
-        // Valid case: Amount only, no product details
+    // Legacy check for Flour transaction types if no product details (e.g. amount only)
+    if (isFlourTransaction && !formData.productTypeId && !hasProductDetails) {
+      // Allow Amount-Only transactions for Receivable/Payable/Expense/Income
+      const isFlexibleType = ["receivable", "payable", "expense", "income"].includes(formData.type);
+      const hasAmount = formData.amount && formData.amount.trim() !== "";
+
+      if (isFlexibleType && hasAmount) {
+        // Valid case: Amount only
       } else {
         setValidationError(t("productTypeRequired"))
         return
@@ -1046,14 +1197,62 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
               )}
             </h2>
           </div>
-          {editingTransaction && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded">{t("editing")}</span>
-              <Button variant="outline" onClick={handleCancelEdit}>
-                {t("cancelEdit")}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {customerBalance && (
+              <div className="flex flex-col items-end gap-1 px-3 py-1.5 bg-background border rounded-lg shadow-sm text-xs min-w-[120px]">
+                {/* Check if all balances are zero */}
+                {(() => {
+                  const hasCash = Object.values(customerBalance.cashDebts).some(a => Math.abs(a) >= 0.01);
+                  const hasProduct = Object.values(customerBalance.productDebts).some(a => Math.abs(a) >= 0.001);
+
+                  if (!hasCash && !hasProduct) {
+                    return <span className="text-muted-foreground">{lang === "fa" ? "حساب تسویه" : "No Balance"}</span>
+                  }
+                  return null;
+                })()}
+
+                {/* Cash Balances */}
+                {Object.entries(customerBalance.cashDebts).map(([currId, amount]) => {
+                  if (Math.abs(amount) < 0.01) return null;
+                  const curr = data.currencies?.find(c => c.id === currId);
+                  const isReceivable = amount > 0;
+                  return (
+                    <div key={currId} className="flex items-center gap-1 font-medium">
+                      <span>{formatNumberWithCommas(Math.abs(amount).toFixed(0))}</span>
+                      <span className="text-muted-foreground">{curr?.symbol || ""}</span>
+                      <span className={isReceivable ? "text-green-600" : "text-red-600"}>
+                        {isReceivable ? t("receivable") : t("payable")}
+                      </span>
+                    </div>
+                  )
+                })}
+                {/* Product Balances */}
+                {Object.entries(customerBalance.productDebts).map(([pId, amount]) => {
+                  if (Math.abs(amount) < 0.001) return null;
+                  const prodToken = productTypes?.find(p => p.id === pId);
+                  const isReceivable = amount > 0;
+                  return (
+                    <div key={pId} className="flex items-center gap-1 font-medium">
+                      <span>{formatNumberWithCommas(Math.abs(amount).toFixed(3))}</span>
+                      <span className="text-muted-foreground">{prodToken?.name || ""}</span>
+                      <span className={isReceivable ? "text-green-600" : "text-red-600"}>
+                        {isReceivable ? t("receivable") : t("payable")}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {editingTransaction && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded">{t("editing")}</span>
+                <Button variant="outline" onClick={handleCancelEdit}>
+                  {t("cancelEdit")}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Customer Change Confirmation Dialog */}
@@ -1587,6 +1786,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                     </thead>
                     <tbody>
                       {temporaryTransactions.map((tx) => {
+                        if (tx.parentDocumentId) return null; // Filter out sub-documents from UI
                         const typeInfo = transactionTypes.find(t => t.value === tx.type)
                         const formatNumber = (num: number) => new Intl.NumberFormat("en-US").format(num)
 
@@ -1840,44 +2040,49 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         {/* Goods In */}
                         <td className="p-2 text-center text-xs align-top">
                           {(() => {
-                            const totals: { [unit: string]: number } = {}
-                            const totalsSpecial: { [unit: string]: number } = {}
                             let count = 0
+                            let weightTotal = 0
                             let countSpecial = 0
+                            let weightTotalSpecial = 0
+                            const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase()
+                            const toGrams: Record<string, number> = {
+                              mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+                              "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+                            };
+                            const baseFactor = toGrams[baseUnit] || 1000000;
 
                             temporaryTransactions.forEach(tx => {
+                              if (tx.parentDocumentId) return; // Filter out sub-documents
                               if ((tx.type === "product_in" || tx.type === "income") && (tx.weight || tx.quantity)) {
                                 const isSpecial = tx.type === "income"
                                 const qty = Math.abs(tx.quantity || 0)
-                                const wgt = Math.abs(tx.weight || 0)
+                                let wgt = Math.abs(tx.weight || 0)
+
+                                if (wgt) {
+                                  const u = (tx.weightUnit || "ton").toLowerCase();
+                                  const txFactor = toGrams[u] || 1000000;
+                                  wgt = (wgt * txFactor) / baseFactor;
+                                }
 
                                 if (isSpecial) {
                                   if (qty) countSpecial += qty
-                                  if (wgt) {
-                                    const unit = tx.weightUnit || "ton"
-                                    totalsSpecial[unit] = (totalsSpecial[unit] || 0) + wgt
-                                  }
+                                  if (wgt) weightTotalSpecial += wgt
                                 } else {
                                   if (qty) count += qty
-                                  if (wgt) {
-                                    const unit = tx.weightUnit || "ton"
-                                    totals[unit] = (totals[unit] || 0) + wgt
-                                  }
+                                  if (wgt) weightTotal += wgt
                                 }
                               }
                             })
 
-                            const renderElements = (c: number, t: { [u: string]: number }, label?: string, colorClass?: string) => {
+                            const renderElements = (c: number, w: number, label?: string, colorClass?: string) => {
                               const els = []
                               if (c > 0) els.push(<div key="count" className={`whitespace-nowrap font-semibold ${colorClass}`}>{c.toLocaleString()} <span className="text-[10px] opacity-70">Count</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
-                              Object.entries(t).forEach(([unit, val]) => {
-                                if (val > 0) els.push(<div key={unit} className={`whitespace-nowrap font-semibold ${colorClass}`}>{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
-                              })
+                              if (w > 0) els.push(<div key="weight" className={`whitespace-nowrap font-semibold ${colorClass}`}>{w.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-[10px] opacity-70">{baseUnit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
                               return els
                             }
 
-                            const mainEls = renderElements(count, totals, undefined, "")
-                            const specialEls = renderElements(countSpecial, totalsSpecial, lang === "fa" ? "درآمد" : "Income", "text-blue-700")
+                            const mainEls = renderElements(count, weightTotal, undefined, "text-red-700")
+                            const specialEls = renderElements(countSpecial, weightTotalSpecial, lang === "fa" ? "درآمد" : "Income", "text-blue-700")
 
                             return (
                               <div className="flex flex-col gap-1">
@@ -1893,44 +2098,49 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         {/* Goods Out */}
                         <td className="p-2 text-center text-xs align-top">
                           {(() => {
-                            const totals: { [unit: string]: number } = {}
-                            const totalsSpecial: { [unit: string]: number } = {}
                             let count = 0
+                            let weightTotal = 0
                             let countSpecial = 0
+                            let weightTotalSpecial = 0
+                            const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase()
+                            const toGrams: Record<string, number> = {
+                              mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+                              "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+                            };
+                            const baseFactor = toGrams[baseUnit] || 1000000;
 
                             temporaryTransactions.forEach(tx => {
+                              if (tx.parentDocumentId) return; // Filter out sub-documents
                               if ((tx.type === "product_out" || tx.type === "expense") && (tx.weight || tx.quantity)) {
                                 const isSpecial = tx.type === "expense"
                                 const qty = Math.abs(tx.quantity || 0)
-                                const wgt = Math.abs(tx.weight || 0)
+                                let wgt = Math.abs(tx.weight || 0)
+
+                                if (wgt) {
+                                  const u = (tx.weightUnit || "ton").toLowerCase();
+                                  const txFactor = toGrams[u] || 1000000;
+                                  wgt = (wgt * txFactor) / baseFactor;
+                                }
 
                                 if (isSpecial) {
                                   if (qty) countSpecial += qty
-                                  if (wgt) {
-                                    const unit = tx.weightUnit || "ton"
-                                    totalsSpecial[unit] = (totalsSpecial[unit] || 0) + wgt
-                                  }
+                                  if (wgt) weightTotalSpecial += wgt
                                 } else {
                                   if (qty) count += qty
-                                  if (wgt) {
-                                    const unit = tx.weightUnit || "ton"
-                                    totals[unit] = (totals[unit] || 0) + wgt
-                                  }
+                                  if (wgt) weightTotal += wgt
                                 }
                               }
                             })
 
-                            const renderElements = (c: number, t: { [u: string]: number }, label?: string, colorClass?: string) => {
+                            const renderElements = (c: number, w: number, label?: string, colorClass?: string) => {
                               const els = []
                               if (c > 0) els.push(<div key="count" className={`whitespace-nowrap font-semibold ${colorClass}`}>{c.toLocaleString()} <span className="text-[10px] opacity-70">Count</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
-                              Object.entries(t).forEach(([unit, val]) => {
-                                if (val > 0) els.push(<div key={unit} className={`whitespace-nowrap font-semibold ${colorClass}`}>{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
-                              })
+                              if (w > 0) els.push(<div key="weight" className={`whitespace-nowrap font-semibold ${colorClass}`}>{w.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-[10px] opacity-70">{baseUnit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
                               return els
                             }
 
-                            const mainEls = renderElements(count, totals, undefined, "")
-                            const specialEls = renderElements(countSpecial, totalsSpecial, lang === "fa" ? "هزینه" : "Expense", "text-blue-700")
+                            const mainEls = renderElements(count, weightTotal, undefined, "text-green-700")
+                            const specialEls = renderElements(countSpecial, weightTotalSpecial, lang === "fa" ? "هزینه" : "Expense", "text-blue-700")
 
                             return (
                               <div className="flex flex-col gap-1">
@@ -1946,22 +2156,31 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         {/* Goods Receivable */}
                         <td className="p-2 text-center text-xs align-top">
                           {(() => {
-                            const totals: { [unit: string]: number } = {}
                             let count = 0
+                            let weightTotal = 0
+                            const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase()
+                            const toGrams: Record<string, number> = {
+                              mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+                              "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+                            };
+                            const baseFactor = toGrams[baseUnit] || 1000000;
+
                             temporaryTransactions.forEach(tx => {
+                              if (tx.parentDocumentId) return; // Filter out sub-documents
                               if ((tx.type === "product_purchase" || tx.type === "receivable") && (tx.weight || tx.quantity)) {
-                                if (tx.quantity) count += Math.abs(tx.quantity)
-                                if (tx.weight) {
-                                  const unit = tx.weightUnit || "ton"
-                                  totals[unit] = (totals[unit] || 0) + Math.abs(tx.weight)
+                                if (tx.productTypeId) { // Only count if product type exists
+                                  if (tx.quantity) count += Math.abs(tx.quantity)
+                                  if (tx.weight) {
+                                    const u = (tx.weightUnit || "ton").toLowerCase();
+                                    const txFactor = toGrams[u] || 1000000;
+                                    weightTotal += (Math.abs(tx.weight) * txFactor) / baseFactor;
+                                  }
                                 }
                               }
                             })
                             const elements = []
-                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
-                            Object.entries(totals).forEach(([unit, val]) => {
-                              if (val > 0) elements.push(<div key={unit} className="whitespace-nowrap font-semibold">{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span></div>)
-                            })
+                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold text-green-700">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
+                            if (weightTotal > 0) elements.push(<div key="weight" className="whitespace-nowrap font-semibold text-green-700">{weightTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-[10px] opacity-70">{baseUnit}</span></div>)
                             return elements.length > 0 ? elements : "-"
                           })()}
                         </td>
@@ -1969,22 +2188,31 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         {/* Goods Payable */}
                         <td className="p-2 text-center text-xs align-top">
                           {(() => {
-                            const totals: { [unit: string]: number } = {}
                             let count = 0
+                            let weightTotal = 0
+                            const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase()
+                            const toGrams: Record<string, number> = {
+                              mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+                              "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+                            };
+                            const baseFactor = toGrams[baseUnit] || 1000000;
+
                             temporaryTransactions.forEach(tx => {
+                              if (tx.parentDocumentId) return; // Filter out sub-documents
                               if ((tx.type === "product_sale" || tx.type === "payable") && (tx.weight || tx.quantity)) {
-                                if (tx.quantity) count += Math.abs(tx.quantity)
-                                if (tx.weight) {
-                                  const unit = tx.weightUnit || "ton"
-                                  totals[unit] = (totals[unit] || 0) + Math.abs(tx.weight)
+                                if (tx.productTypeId) { // Only count if product type exists
+                                  if (tx.quantity) count += Math.abs(tx.quantity)
+                                  if (tx.weight) {
+                                    const u = (tx.weightUnit || "ton").toLowerCase();
+                                    const txFactor = toGrams[u] || 1000000;
+                                    weightTotal += (Math.abs(tx.weight) * txFactor) / baseFactor;
+                                  }
                                 }
                               }
                             })
                             const elements = []
-                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
-                            Object.entries(totals).forEach(([unit, val]) => {
-                              if (val > 0) elements.push(<div key={unit} className="whitespace-nowrap font-semibold">{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span></div>)
-                            })
+                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold text-red-700">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
+                            if (weightTotal > 0) elements.push(<div key="weight" className="whitespace-nowrap font-semibold text-red-700">{weightTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-[10px] opacity-70">{baseUnit}</span></div>)
                             return elements.length > 0 ? elements : "-"
                           })()}
                         </td>
@@ -2115,6 +2343,195 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+
+                {/* Projected Balance Preview */}
+                <div className="mt-4 p-4 border rounded-lg bg-slate-50">
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span className="w-1 h-4 bg-blue-600 rounded"></span>
+                    {lang === "fa" ? "پیش‌نمایش وضعیت حساب پس از ثبت این اسناد" : "Balance Preview After Registration"}
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Money Projection */}
+                    {(() => {
+                      if (!customerBalance) return null;
+                      const currentCash = { ...customerBalance.cashDebts };
+                      const projectedCash = { ...currentCash };
+
+                      // Apply temporary transactions effect
+                      temporaryTransactions.forEach(tx => {
+                        const isRelevant = tx.customerId === formData.customerId || tx.accountId === formData.customerId;
+                        if (!isRelevant) return;
+
+                        const currencyId = tx.currencyId || "default";
+                        const amt = tx.amount || 0;
+
+                        // Logic must mirror calculateCustomerDebts exactly
+                        // customer-list.tsx logic summary: 
+                        // product_purchase: cash - amount
+                        // product_sale: cash + amount
+                        // cash_in: cash - amount (if customerId match)
+                        // cash_out: cash + amount (if customerId match)
+                        // receivable: cash + amount
+                        // payable: cash + transaction.amount (if transaction.amount is signed correctly? In form we use positive amounts usually. Let's assume standard logic: Payable increases liability (Red), so if liability is negative in balance logic, this should go towards negative. But in customer-list line 286: cashDebts = current + amount. Let's stick to what customer-list does.)
+                        // Wait, let's re-verify customer-list logic for payable/receivable with amount.
+                        // customer-list: receivable -> cashDebts + amount (Positive = Receivable = Green)
+                        // transaction-form (line 1192 in prev step): isReceivable = amount > 0.
+
+                        switch (tx.type) {
+                          case "product_purchase": projectedCash[currencyId] = (projectedCash[currencyId] || 0) - amt; break;
+                          case "product_sale": projectedCash[currencyId] = (projectedCash[currencyId] || 0) + amt; break;
+                          case "cash_in": projectedCash[currencyId] = (projectedCash[currencyId] || 0) - amt; break;
+                          case "cash_out": projectedCash[currencyId] = (projectedCash[currencyId] || 0) + amt; break;
+                          case "receivable": projectedCash[currencyId] = (projectedCash[currencyId] || 0) + amt; break;
+                          case "payable": projectedCash[currencyId] = (projectedCash[currencyId] || 0) - amt; break;
+                        }
+                      });
+
+                      // Render
+                      const currencies = [...new Set([...Object.keys(currentCash), ...Object.keys(projectedCash)])];
+                      if (currencies.length === 0) return <div className="text-sm text-gray-500">{lang === "fa" ? "هیچ تراکنش مالی ثبت نشده است" : "No cash transactions"}</div>;
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-gray-700 border-b pb-1 mb-2">{lang === "fa" ? "وضعیت مالی (وجه نقد)" : "Financial Status (Cash)"}</div>
+                          {currencies.map(cId => {
+                            const curr = data.currencies?.find(c => c.id === cId);
+                            const current = currentCash[cId] || 0;
+                            const next = projectedCash[cId] || 0;
+                            if (Math.abs(current) < 1 && Math.abs(next) < 1) return null;
+
+                            return (
+                              <div key={cId} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1 bg-white p-2 rounded border">
+                                <div className="font-medium text-gray-600">{curr?.name} ({curr?.symbol})</div>
+                                <div className="flex items-center gap-3">
+                                  <span className={current >= 0 ? "text-green-600" : "text-red-600"}>
+                                    {formatNumberWithCommas(Math.abs(current).toFixed(0))} {current >= 0 ? t("receivable") : t("payable")}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className={`font-bold ${next >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                    {formatNumberWithCommas(Math.abs(next).toFixed(0))} {next >= 0 ? t("receivable") : t("payable")}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Product Projection */}
+                    {(() => {
+                      if (!customerBalance) return null;
+                      const currentProd = { ...customerBalance.productDebts };
+                      const projectedProd = { ...currentProd };
+
+                      temporaryTransactions.forEach(tx => {
+                        // Filter relevant transactions (Must be main document + relevant customer)
+                        if (tx.parentDocumentId) return; // Ignore sub-documents for projection to avoid duplication
+
+                        const isRelevant = tx.customerId === formData.customerId || tx.accountId === formData.customerId;
+                        if (!isRelevant) return;
+
+                        if (!tx.productTypeId) return;
+
+                        let qty = tx.quantity || tx.weight || 0;
+                        if (tx.weight) {
+                          const unit = (tx.weightUnit || "ton").toLowerCase();
+                          const baseUnit = (data.settings?.baseWeightUnit || "ton").toLowerCase();
+
+                          // Conversion factors to GRAMS (Standard Base)
+                          const toGrams: Record<string, number> = {
+                            mg: 0.001, g: 1, kg: 1000, ton: 1000000, lb: 453.592,
+                            "milligram (mg)": 0.001, "gram (g)": 1, "kilogram (kg)": 1000, "pound (lb)": 453.592
+                          };
+
+                          const txFactor = toGrams[unit] || 1000000;
+                          const baseFactor = toGrams[baseUnit] || 1000000;
+
+                          // Convert transaction weight -> grams -> base unit weight
+                          // qty is currently in 'unit'
+                          const weightInGrams = qty * txFactor;
+                          qty = weightInGrams / baseFactor;
+                        }
+
+                        // Determine sign based on transaction type (User Formula: Out+Rec - In-Pay)
+                        let sign = 0;
+                        switch (tx.type) {
+                          // Positive Group (Add): Goods Out + Goods Receivable
+                          case "product_purchase": // User: Purchase = Customer Debtor (Positive)
+                          case "product_out":
+                          case "receivable":
+                            sign = 1;
+                            break;
+
+                          // Negative Group (Subtract): Goods In + Goods Payable
+                          case "product_sale": // User: Sale = Customer Creditor (Negative)
+                          case "product_in":
+                          case "payable":
+                            sign = -1;
+                            break;
+
+                          // Explicitly Ignore: Expense, Income, Cash
+                          case "expense":
+                          case "income":
+                          case "cash_in":
+                          case "cash_out":
+                            sign = 0; // Ensure these are strictly ignored
+                            break;
+                        }
+
+                        // Special handling for Warehouse (Stock logic is opposite of Debt logic)
+                        if (formData.customerId === "default-warehouse" || tx.customerId === "default-warehouse") {
+                          sign = -sign; // Invert sign for stock
+                        }
+
+                        if (sign !== 0) {
+                          projectedProd[tx.productTypeId] = (projectedProd[tx.productTypeId] || 0) + (qty * sign);
+                        }
+                      });
+
+
+                      const prods = [...new Set([...Object.keys(currentProd), ...Object.keys(projectedProd)])];
+
+                      // Check if effectively empty
+                      const hasContent = prods.some(p => Math.abs(currentProd[p] || 0) > 0.001 || Math.abs(projectedProd[p] || 0) > 0.001);
+
+                      if (!hasContent) return null; // Hide if no product movement
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-gray-700 border-b pb-1 mb-2">{lang === "fa" ? "وضعیت کالا" : "Product Status"}</div>
+                          {prods.map(pId => {
+                            const prod = productTypes?.find(p => p.id === pId);
+                            const current = currentProd[pId] || 0;
+                            const next = projectedProd[pId] || 0;
+                            if (Math.abs(current) < 0.001 && Math.abs(next) < 0.001) return null;
+
+                            const isQuantity = prod?.measurementType === "quantity";
+                            const unitLabel = isQuantity ? (lang === "fa" ? "عدد" : "Count") : (data.settings?.baseWeightUnit || "ton");
+                            const decimals = isQuantity ? 0 : 3;
+
+                            return (
+                              <div key={pId} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1 bg-white p-2 rounded border">
+                                <div className="font-medium text-gray-600">{prod?.name}</div>
+                                <div className="flex items-center gap-3">
+                                  <span className={current >= 0 ? "text-green-600" : "text-red-600"}>
+                                    {formatNumberWithCommas(Math.abs(current).toFixed(decimals))} <span className="text-[10px] opacity-70">({unitLabel})</span> {current >= 0 ? t("receivable") : t("payable")}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className={`font-bold ${next >= 0 ? "text-green-700" : "text-red-700"}`}>
+                                    {formatNumberWithCommas(Math.abs(next).toFixed(decimals))} <span className="text-[10px] opacity-70">({unitLabel})</span> {next >= 0 ? t("receivable") : t("payable")}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
