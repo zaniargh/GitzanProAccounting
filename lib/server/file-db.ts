@@ -42,63 +42,47 @@ export async function writeDB(db: DBShape): Promise<void> {
   const p = await getDBPath()
   const tmp = p + ".tmp"
 
-  try {
-    // Write to temporary file
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8")
+  let lastError: any = null
 
-    // On Windows, rename can fail. Try multiple approaches
-    let success = false
-    let lastError: any = null
-
-    // Approach 1: Try direct rename after deleting target
+  // Retry up to 3 times
+  for (let i = 0; i < 3; i++) {
     try {
-      try {
-        await fs.unlink(p)
-      } catch (err: any) {
-        if (err.code !== 'ENOENT') {
-          throw err
-        }
-      }
-      await fs.rename(tmp, p)
-      success = true
-    } catch (err: any) {
-      lastError = err
-      // Continue to next approach
-    }
+      // Write to temporary file
+      await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8")
 
-    // Approach 2: If rename failed, try copy + delete
-    if (!success) {
+      // Try to replace the file
       try {
-        // Try to unlink again (maybe it was locked before)
+        // On Windows, we often need to remove the destination first
         try {
           await fs.unlink(p)
         } catch (err: any) {
           if (err.code !== 'ENOENT') {
-            // File exists but can't delete - try copying over it anyway
+            // If we can't delete it, it might be locked.
+            // We'll try to overwrite it with copyFile below if rename fails,
+            // or just let the next steps handle it.
+            throw err
           }
         }
 
-        // Copy temp file to target
+        await fs.rename(tmp, p)
+        return // Success
+      } catch (renameError) {
+        // If rename failed, try copy as fallback
         await fs.copyFile(tmp, p)
-
-        // Delete temp file
         await fs.unlink(tmp)
-        success = true
-      } catch (err: any) {
-        lastError = err
+        return // Success
       }
-    }
+    } catch (error) {
+      lastError = error
+      // Clean up temp file
+      try {
+        await fs.unlink(tmp)
+      } catch { }
 
-    if (!success) {
-      throw lastError || new Error("Failed to write database file")
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
-  } catch (error) {
-    // Clean up temp file if something goes wrong
-    try {
-      await fs.unlink(tmp)
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error
   }
+
+  throw lastError || new Error("Failed to write database file after retries")
 }

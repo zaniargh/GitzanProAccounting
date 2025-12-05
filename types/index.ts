@@ -37,6 +37,9 @@ export type TransactionType =
   | "cash_out"
   | "expense"
   | "income"
+  | "income"
+  | "receivable"
+  | "payable"
 
 export interface Transaction {
   id: string

@@ -47,7 +47,17 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
   })
   const [productCodeError, setProductCodeError] = useState("")
   const [filterMeasurement, setFilterMeasurement] = useState<"all" | "quantity" | "weight">("all")
+  const [sortOrder, setSortOrder] = useState<"newest" | "inventory-desc" | "inventory-asc" | "name-asc" | "name-desc" | "type-asc" | "type-desc">("newest")
+  const [selectedWeightUnit, setSelectedWeightUnit] = useState<"ton" | "kg" | "g" | "mg" | "lb">("ton")
   const { t, lang } = useLang()
+
+  const WEIGHT_CONVERSION = {
+    ton: 1000,
+    kg: 1,
+    g: 0.001,
+    mg: 0.000001,
+    lb: 0.453592
+  }
 
   const calculateInventory = (product: ProductType) => {
     let inventory = 0
@@ -57,13 +67,22 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
         if (product.measurementType === "quantity") {
           amount = Number(t.quantity) || 0
         } else {
-          amount = Number(t.weight) || 0
+          // Convert transaction weight to kg first (base unit)
+          const weightInKg = (Number(t.weight) || 0) * (WEIGHT_CONVERSION[(t.weightUnit as keyof typeof WEIGHT_CONVERSION) || "ton"] || 1000)
+          // Then convert to selected unit
+          amount = weightInKg / WEIGHT_CONVERSION[selectedWeightUnit]
         }
 
         // Fallback for data inconsistency (e.g. type changed)
         if (amount === 0) {
-          if (product.measurementType === "quantity" && (Number(t.weight) || 0) > 0) amount = Number(t.weight) || 0
-          else if (product.measurementType !== "quantity" && (Number(t.quantity) || 0) > 0) amount = Number(t.quantity) || 0
+          if (product.measurementType === "quantity" && (Number(t.weight) || 0) > 0) {
+            // Treat weight as quantity if type mismatch (fallback)
+            amount = Number(t.weight) || 0
+          }
+          else if (product.measurementType !== "quantity" && (Number(t.quantity) || 0) > 0) {
+            // Treat quantity as weight (fallback, assume 1 unit = 1 selected unit)
+            amount = Number(t.quantity) || 0
+          }
         }
 
         if (t.type === "product_in" || t.type === "product_purchase") {
@@ -81,7 +100,49 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
       (type.productCode && type.productCode.includes(searchTerm))
     const matchesFilter = filterMeasurement === "all" || type.measurementType === filterMeasurement
     return matchesSearch && matchesFilter
+  }).sort((a, b) => {
+    if (sortOrder === "newest") {
+      if (a.createdAt && b.createdAt) {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      }
+      return 0
+    }
+
+    if (sortOrder === "name-asc") {
+      return a.name.localeCompare(b.name)
+    }
+    if (sortOrder === "name-desc") {
+      return b.name.localeCompare(a.name)
+    }
+
+    if (sortOrder === "type-asc") {
+      return (a.measurementType || "").localeCompare(b.measurementType || "")
+    }
+    if (sortOrder === "type-desc") {
+      return (b.measurementType || "").localeCompare(a.measurementType || "")
+    }
+
+    const inventoryA = calculateInventory(a)
+    const inventoryB = calculateInventory(b)
+
+    if (sortOrder === "inventory-desc") {
+      return inventoryB - inventoryA
+    } else if (sortOrder === "inventory-asc") {
+      return inventoryA - inventoryB
+    }
+
+    return 0
   })
+
+  const handleSort = (column: "name" | "inventory" | "type") => {
+    if (column === "name") {
+      setSortOrder(sortOrder === "name-asc" ? "name-desc" : "name-asc")
+    } else if (column === "inventory") {
+      setSortOrder(sortOrder === "inventory-desc" ? "inventory-asc" : "inventory-desc")
+    } else if (column === "type") {
+      setSortOrder(sortOrder === "type-asc" ? "type-desc" : "type-asc")
+    }
+  }
 
   const generateNextProductCode = () => {
     if (productTypes.length === 0) return "1001"
@@ -301,6 +362,30 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
               <SelectItem value="quantity">{t("measurementQuantity")}</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select value={selectedWeightUnit} onValueChange={(v: any) => setSelectedWeightUnit(v)}>
+            <SelectTrigger className="w-[100px]">
+              <SelectValue placeholder="Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ton">Ton</SelectItem>
+              <SelectItem value="kg">kg</SelectItem>
+              <SelectItem value="g">g</SelectItem>
+              <SelectItem value="mg">mg</SelectItem>
+              <SelectItem value="lb">lb</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sortOrder} onValueChange={(v: any) => setSortOrder(v)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder={t("sortBy")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">{t("sortNewest")}</SelectItem>
+              <SelectItem value="inventory-desc">{t("sortInventoryHigh")}</SelectItem>
+              <SelectItem value="inventory-asc">{t("sortInventoryLow")}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -310,9 +395,24 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
           <TableHeader className="bg-primary/5">
             <TableRow>
               <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("productCode")}</TableHead>
-              <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("productNameLabel")}</TableHead>
-              <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("productMeasurementType")}</TableHead>
-              <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("inventory")}</TableHead>
+              <TableHead
+                className={`text-right font-bold cursor-pointer hover:bg-muted/50 ${lang === "fa" ? "text-right" : "text-left"}`}
+                onClick={() => handleSort("name")}
+              >
+                {t("productNameLabel")} {sortOrder === "name-asc" ? "↑" : sortOrder === "name-desc" ? "↓" : ""}
+              </TableHead>
+              <TableHead
+                className={`text-right font-bold cursor-pointer hover:bg-muted/50 ${lang === "fa" ? "text-right" : "text-left"}`}
+                onClick={() => handleSort("type")}
+              >
+                {t("productMeasurementType")} {sortOrder === "type-asc" ? "↑" : sortOrder === "type-desc" ? "↓" : ""}
+              </TableHead>
+              <TableHead
+                className={`text-right font-bold cursor-pointer hover:bg-muted/50 ${lang === "fa" ? "text-right" : "text-left"}`}
+                onClick={() => handleSort("inventory")}
+              >
+                {t("inventory")} {sortOrder === "inventory-asc" ? "↑" : sortOrder === "inventory-desc" ? "↓" : ""}
+              </TableHead>
               <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("description")}</TableHead>
               <TableHead className={`text-right font-bold ${lang === "fa" ? "text-right" : "text-left"}`}>{t("actions")}</TableHead>
             </TableRow>
@@ -331,9 +431,9 @@ export function ProductTypesManager({ productTypes, transactions = [], onProduct
                   </TableCell>
                   <TableCell>
                     <span className={inventory < 0 ? "text-red-600 font-bold" : "font-bold"}>
-                      {new Intl.NumberFormat(lang === "fa" ? "fa-IR" : "en-US").format(inventory)}
+                      {new Intl.NumberFormat(lang === "fa" ? "fa-IR" : "en-US", { maximumFractionDigits: 3 }).format(inventory)}
                       {" "}
-                      {type.measurementType === "quantity" ? t("unit") : t("tons")}
+                      {type.measurementType === "quantity" ? t("unit") : selectedWeightUnit}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate text-muted-foreground">

@@ -18,7 +18,8 @@ const getAmountClass = (type: string) => {
   const green = new Set([
     "cash_out",      // خروج وجه (دلار)
     "product_out",     // خروج محصول
-    "product_purchase" // خرید محصول
+    "product_purchase", // خرید محصول
+    "receivable"            // طلب
   ])
 
   // نوع‌هایی که باید قرمز باشند
@@ -26,7 +27,8 @@ const getAmountClass = (type: string) => {
     "cash_in",    // ورود وجه (دلار)
     "product_in",   // ورود محصول
     "product_sale", // فروش محصول
-    "expense"     // هزینه
+    "expense",     // هزینه
+    "payable"       // بدهی
   ])
 
   if (green.has(type)) return "text-green-600"
@@ -178,6 +180,9 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       cash_in: "هه یه تی دولار",
       cash_out: "لایه تی دولار",
       expense: "هزینه",
+      income: "درآمد",
+      receivable: "طلب",
+      payable: "بدهی",
     }
     return types[type as keyof typeof types] || type
   }
@@ -253,15 +258,17 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
               (currentBalance.productBalances[transaction.productTypeId] || 0) - (transaction.weight || 0)
           }
           break
-        case "cash_in":
-          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
-          break
         case "cash_out":
-          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
-          break
         case "expense":
-          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
+        case "receivable":
+        case "payable": // Payable is now signed (negative), so we just add it
+          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
+          if (transaction.productTypeId) {
+            currentBalance.productBalances[transaction.productTypeId] =
+              (currentBalance.productBalances[transaction.productTypeId] || 0) + (transaction.weight || 0)
+          }
           break
+        case "cash_in":
         case "income":
           currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           break
@@ -510,7 +517,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           <td>${t.weight ? (t.weight).toLocaleString("en-US") + " تن" : "-"}</td>
           <td>${unitCell}</td>
           <td><span class="${dollarClass}">${(t.amount || 0).toLocaleString("en-US")} دولار</span></td>
-          <td>${(rb.cashBalance || 0).toLocaleString("en-US")} ${badge(rb.cashBalance || 0)}</td>
+          <td>${(rb.cashBalances[t.currencyId || "default"] || 0).toLocaleString("en-US")} ${badge(rb.cashBalances[t.currencyId || "default"] || 0)}</td>
           <td>${productVal.toLocaleString("en-US")} ${badge(productVal)}</td>
           <td>
             <div>${formatDate(t.date)}</div>

@@ -150,29 +150,119 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
   // Calculate totals from subdocuments for main document display
   const getSubdocumentTotals = (mainDocId: string) => {
     const subdocs = getSubdocuments(mainDocId)
+
+    const initialGoods = () => ({ weight: 0, quantity: 0 })
+    const initialMoney = () => ({} as Record<string, number>)
+
     const totals = {
-      quantity: 0,
-      weight: 0,
-      amount: 0,
-      moneyIn: 0,  // Income, cash_in
-      moneyOut: 0, // Expense, cash_out
-      count: subdocs.length
+      goodsIn: initialGoods(),
+      goodsOut: initialGoods(),
+      goodsCredit: initialGoods(),
+      goodsDebit: initialGoods(),
+      moneyIn: initialMoney(),
+      moneyOut: initialMoney(),
+      moneyCredit: initialMoney(),
+      moneyDebit: initialMoney(),
+      hasData: false,
+      weightUnit: "ton" // Default to ton
     }
 
-    subdocs.forEach(sub => {
-      if (sub.quantity) totals.quantity += sub.quantity
-      if (sub.weight) totals.weight += sub.weight
-      if (sub.amount) totals.amount += sub.amount
+    if (subdocs.length === 0) return null
 
-      // Separate money in/out based on transaction type
-      if (sub.type === "income" || sub.type === "cash_in") {
-        totals.moneyIn += sub.amount || 0
-      } else if (sub.type === "expense" || sub.type === "cash_out") {
-        totals.moneyOut += sub.amount || 0
+    let commonUnit: string | null = null
+    let mixedUnits = false
+
+    subdocs.forEach(sub => {
+      totals.hasData = true
+
+      // Check for common weight unit
+      if (sub.weight && sub.weightUnit) {
+        if (commonUnit === null) {
+          commonUnit = sub.weightUnit
+        } else if (commonUnit !== sub.weightUnit) {
+          mixedUnits = true
+        }
       }
+
+      // Helper to add goods
+      const addGoods = (target: { weight: number, quantity: number }) => {
+        if (sub.weight) {
+          // Normalize to ton for aggregation
+          const w = convertWeight(Math.abs(sub.weight), sub.weightUnit || "ton", "ton")
+          target.weight += w
+        }
+        if (sub.quantity) target.quantity += Math.abs(sub.quantity)
+      }
+
+      // Helper to add money
+      const addMoney = (target: Record<string, number>) => {
+        if (sub.amount) {
+          const currency = sub.currencyId || (data.currencies?.find(c => c.isBase)?.id || "default")
+          target[currency] = (target[currency] || 0) + Math.abs(sub.amount)
+        }
+      }
+
+      // Goods Logic
+      if (sub.type === "product_in") addGoods(totals.goodsIn)
+      if (sub.type === "product_out") addGoods(totals.goodsOut)
+      if ((sub.type === "product_purchase" || sub.type === "payable") && (sub.weight || sub.quantity)) addGoods(totals.goodsCredit)
+      if ((sub.type === "product_sale" || sub.type === "receivable") && (sub.weight || sub.quantity)) addGoods(totals.goodsDebit)
+
+      // Money Logic
+      if (sub.type === "cash_in" || sub.type === "income") addMoney(totals.moneyIn)
+      if (sub.type === "cash_out" || sub.type === "expense") addMoney(totals.moneyOut)
+      if ((sub.type === "product_purchase" || sub.type === "payable") && sub.amount) addMoney(totals.moneyCredit)
+      if ((sub.type === "product_sale" || sub.type === "receivable") && sub.amount) addMoney(totals.moneyDebit)
     })
 
+    if (!mixedUnits && commonUnit) {
+      totals.weightUnit = commonUnit
+    }
+
     return totals
+  }
+
+  const renderAggregatedMoney = (moneyMap: Record<string, number>, colorClass: string) => {
+    const entries = Object.entries(moneyMap)
+    if (entries.length === 0) return "-"
+    return (
+      <div className="flex flex-col gap-1 items-center">
+        {entries.map(([currId, amount]) => {
+          const symbol = data.currencies?.find(c => c.id === currId)?.symbol || "$"
+          return (
+            <span key={currId} className={`font-bold ${colorClass}`}>
+              {formatNumber(amount)} <span className="text-[10px] text-gray-500 ml-0.5">{symbol}</span>
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const renderAggregatedGoods = (goods: { weight: number, quantity: number }, colorClass: string, originalUnit: string = "ton") => {
+    if (!goods.weight && !goods.quantity) return "-"
+
+    // If original, we default to ton for aggregated values because they are normalized to ton
+    const targetUnit = displayWeightUnit === "original" ? originalUnit : displayWeightUnit
+
+    // Convert weight to display unit
+    const displayW = convertWeight(goods.weight, "ton", targetUnit)
+
+    return (
+      <span className={`font-medium ${colorClass}`}>
+        {goods.quantity ? (
+          <>
+            {formatNumber(goods.quantity)} <span className="text-[10px] text-gray-500 ml-0.5">(Count)</span>
+          </>
+        ) : null}
+        {goods.quantity && goods.weight ? " / " : ""}
+        {goods.weight ? (
+          <>
+            {formatNumber(displayW)} <span className="text-[10px] text-gray-500 ml-0.5">({t(`weightUnit_${targetUnit}`) || targetUnit})</span>
+          </>
+        ) : null}
+      </span>
+    )
   }
 
   const getTransactionTypeInfo = (transaction: Transaction) => {
@@ -217,6 +307,10 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
         return { label: t("expense"), icon: DollarSign, color: "bg-green-100 text-green-800", arrow: ArrowUp }
       case "income":
         return { label: t("income"), icon: DollarSign, color: "bg-red-100 text-red-800", arrow: ArrowDown }
+      case "receivable":
+        return { label: t("receivable"), icon: Package, color: "bg-green-100 text-green-800", arrow: ArrowUp }
+      case "payable":
+        return { label: t("payable"), icon: Package, color: "bg-red-100 text-red-800", arrow: ArrowDown }
       default:
         return { label: t("unknown"), icon: DollarSign, color: "bg-gray-100 text-gray-800", arrow: ArrowDown }
     }
@@ -706,14 +800,14 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                 {/* Goods Sub-headers */}
                 <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colIn")}</TableHead>
                 <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colOut")}</TableHead>
-                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colTalab")}</TableHead>
-                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colBedehi")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colReceivable")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-blue-50/30">{t("colPayable")}</TableHead>
 
                 {/* Money Sub-headers */}
                 <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colIn")}</TableHead>
                 <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colOut")}</TableHead>
-                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colTalab")}</TableHead>
-                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colBedehi")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colReceivable")}</TableHead>
+                <TableHead className="text-center text-[10px] p-1 h-auto border-r bg-green-50/30">{t("colPayable")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -724,8 +818,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                 const subdocuments = getSubdocuments(transaction.id)
                 const hasSubdocs = subdocuments.length > 0
                 const isExpanded = expandedDocs.has(transaction.id)
+                const mainDocTotals = !transaction.parentDocumentId && hasSubdocs ? getSubdocumentTotals(transaction.id) : null
 
-                const renderRow = (trans: Transaction, isSubdoc = false) => (
+                const renderRow = (trans: Transaction, isSubdoc = false, mainDocTotals: any = null) => (
                   <TableRow key={trans.id} className={isSubdoc ? "bg-muted/30" : ""}>
                     <TableCell className={`text-center font-mono p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
                       <div className="flex items-center justify-center gap-1">
@@ -814,188 +909,222 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                     </TableCell>
                     {/* Goods Receipt (Product In) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "product_in") && (trans.weight || trans.quantity) ? (
-                        <span className="font-medium text-red-600">
-                          {trans.quantity ? (
-                            <>
-                              {formatNumber(Math.abs(trans.quantity))}
-                              <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
-                            </>
-                          ) : ""}
-                          {trans.quantity && trans.weight ? " / " : ""}
-                          {trans.weight ? (
-                            displayWeightUnit === "original" ? (
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedGoods(mainDocTotals.goodsIn, "text-red-600", mainDocTotals.weightUnit)
+                      ) : (
+                        (trans.type === "product_in") && (trans.weight || trans.quantity) ? (
+                          <span className="font-medium text-red-600">
+                            {trans.quantity ? (
                               <>
-                                {formatNumber(Math.abs(trans.weight))}
-                                <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                                {formatNumber(Math.abs(trans.quantity))}
+                                <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
                               </>
-                            ) : (
-                              <>
-                                {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
-                                <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
-                              </>
-                            )
-                          ) : ""}
-                        </span>
-                      ) : "-"}
+                            ) : ""}
+                            {trans.quantity && trans.weight ? " / " : ""}
+                            {trans.weight ? (
+                              displayWeightUnit === "original" ? (
+                                <>
+                                  {formatNumber(Math.abs(trans.weight))}
+                                  <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                                </>
+                              ) : (
+                                <>
+                                  {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
+                                  <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
+                                </>
+                              )
+                            ) : ""}
+                          </span>
+                        ) : "-"
+                      )}
                     </TableCell>
 
                     {/* Goods Issue (Product Out) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(trans.type === "product_out") && (trans.weight || trans.quantity) ? (
-                        <span className="font-medium text-green-600">
-                          {trans.quantity ? (
-                            <>
-                              {formatNumber(Math.abs(trans.quantity))}
-                              <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
-                            </>
-                          ) : ""}
-                          {trans.quantity && trans.weight ? " / " : ""}
-                          {trans.weight ? (
-                            displayWeightUnit === "original" ? (
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedGoods(mainDocTotals.goodsOut, "text-green-600", mainDocTotals.weightUnit)
+                      ) : (
+                        (trans.type === "product_out") && (trans.weight || trans.quantity) ? (
+                          <span className="font-medium text-green-600">
+                            {trans.quantity ? (
                               <>
-                                {formatNumber(Math.abs(trans.weight))}
-                                <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                                {formatNumber(Math.abs(trans.quantity))}
+                                <span className="text-[10px] text-gray-500 ml-1">(Count)</span>
                               </>
-                            ) : (
-                              <>
-                                {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
-                                <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
-                              </>
+                            ) : ""}
+                            {trans.quantity && trans.weight ? " / " : ""}
+                            {trans.weight ? (
+                              displayWeightUnit === "original" ? (
+                                <>
+                                  {formatNumber(Math.abs(trans.weight))}
+                                  <span className="text-[10px] text-gray-500 ml-1">({trans.weightUnit || "ton"})</span>
+                                </>
+                              ) : (
+                                <>
+                                  {formatNumber(Math.abs(convertWeight(trans.weight, trans.weightUnit || "ton", displayWeightUnit)))}
+                                  <span className="text-[10px] text-gray-500 ml-1">({t(`weightUnit_${displayWeightUnit}`) || displayWeightUnit})</span>
+                                </>
+                              )
+                            ) : ""}
+                          </span>
+                        ) : "-"
+                      )}
+                    </TableCell>
+
+                    {/* Goods Credit (Payable) */}
+                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedGoods(mainDocTotals.goodsCredit, "text-red-600", mainDocTotals.weightUnit)
+                      ) : (
+                        (() => {
+                          if ((trans.type === "product_purchase" || trans.type === "payable") && (trans.quantity || trans.weight)) {
+                            const val = trans.quantity || trans.weight || 0;
+                            return (
+                              <span className="font-medium text-red-600">
+                                {formatNumber(Math.abs(val))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
+                                </span>
+                              </span>
                             )
-                          ) : ""}
-                        </span>
-                      ) : "-"}
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
 
-                    {/* Goods Talab (Receivable) */}
+                    {/* Goods Debit (Receivable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        if (trans.type === "product_purchase" && (trans.quantity || trans.weight)) {
-                          const val = trans.quantity || trans.weight || 0;
-                          return (
-                            <span className="font-medium text-green-600">
-                              {formatNumber(Math.abs(val))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedGoods(mainDocTotals.goodsDebit, "text-green-600", mainDocTotals.weightUnit)
+                      ) : (
+                        (() => {
+                          if ((trans.type === "product_sale" || trans.type === "receivable") && (trans.quantity || trans.weight)) {
+                            const val = trans.quantity || trans.weight || 0;
+                            return (
+                              <span className="font-medium text-green-600">
+                                {formatNumber(Math.abs(val))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
-                    </TableCell>
-
-                    {/* Goods Bedehi (Payable) */}
-                    <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        if (trans.type === "product_sale" && (trans.quantity || trans.weight)) {
-                          const val = trans.quantity || trans.weight || 0;
-                          return (
-                            <span className="font-medium text-red-600">
-                              {formatNumber(Math.abs(val))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                ({trans.weight ? (trans.weightUnit || "ton") : "Count"})
-                              </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
+                            )
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
 
                     {/* Money Receipt (Cash In) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        // For main documents, use moneyIn if available
-                        if (trans.moneyIn !== undefined && trans.moneyIn > 0) {
-                          return (
-                            <span className="font-bold text-red-600">
-                              {formatNumber(Math.abs(trans.moneyIn))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedMoney(mainDocTotals.moneyIn, "text-red-600")
+                      ) : (
+                        (() => {
+                          // For main documents, use moneyIn if available
+                          if (trans.moneyIn !== undefined && trans.moneyIn > 0) {
+                            return (
+                              <span className="font-bold text-red-600">
+                                {formatNumber(Math.abs(trans.moneyIn))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        // For regular transactions, check type
-                        if (trans.type === "cash_in" || trans.type === "income") {
-                          return (
-                            <span className="font-bold text-red-600">
-                              {formatNumber(Math.abs(trans.amount))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                            )
+                          }
+                          // For regular transactions, check type
+                          if (trans.type === "cash_in" || trans.type === "income") {
+                            return (
+                              <span className="font-bold text-red-600">
+                                {formatNumber(Math.abs(trans.amount))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
+                            )
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
 
                     {/* Money Payment (Cash Out) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        // For main documents, use moneyOut if available
-                        if (trans.moneyOut !== undefined && trans.moneyOut > 0) {
-                          return (
-                            <span className="font-bold text-green-600">
-                              {formatNumber(Math.abs(trans.moneyOut))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedMoney(mainDocTotals.moneyOut, "text-green-600")
+                      ) : (
+                        (() => {
+                          // For main documents, use moneyOut if available
+                          if (trans.moneyOut !== undefined && trans.moneyOut > 0) {
+                            return (
+                              <span className="font-bold text-green-600">
+                                {formatNumber(Math.abs(trans.moneyOut))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        // For regular transactions, check type
-                        if (trans.type === "cash_out" || trans.type === "expense") {
-                          return (
-                            <span className="font-bold text-green-600">
-                              {formatNumber(Math.abs(trans.amount))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                            )
+                          }
+                          // For regular transactions, check type
+                          if (trans.type === "cash_out" || trans.type === "expense") {
+                            return (
+                              <span className="font-bold text-green-600">
+                                {formatNumber(Math.abs(trans.amount))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
+                            )
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
 
-                    {/* Money Talab (Receivable) */}
+                    {/* Money Credit (Payable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        // Product Sale -> Green
-                        if (trans.type === "product_sale" && trans.amount) {
-                          return (
-                            <span className="font-bold text-green-600">
-                              {formatNumber(Math.abs(trans.amount))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedMoney(mainDocTotals.moneyCredit, "text-red-600")
+                      ) : (
+                        (() => {
+                          // Product Purchase -> Red
+                          // Payable -> Red
+                          if ((trans.type === "product_purchase" || trans.type === "payable") && trans.amount) {
+                            return (
+                              <span className="font-bold text-red-600">
+                                {formatNumber(Math.abs(trans.amount))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
+                            )
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
 
-                    {/* Money Bedehi (Payable) */}
+                    {/* Money Debit (Receivable) */}
                     <TableCell className={`text-center p-2 whitespace-nowrap ${isSubdoc ? "text-[10px]" : "text-xs"}`}>
-                      {(() => {
-                        // Product Purchase -> Red
-                        if (trans.type === "product_purchase" && trans.amount) {
-                          return (
-                            <span className="font-bold text-red-600">
-                              {formatNumber(Math.abs(trans.amount))}
-                              <span className="text-[10px] text-gray-500 ml-1">
-                                {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                      {!isSubdoc && mainDocTotals ? (
+                        renderAggregatedMoney(mainDocTotals.moneyDebit, "text-green-600")
+                      ) : (
+                        (() => {
+                          // Product Sale -> Green
+                          // Receivable -> Green
+                          if ((trans.type === "product_sale" || trans.type === "receivable") && trans.amount) {
+                            return (
+                              <span className="font-bold text-green-600">
+                                {formatNumber(Math.abs(trans.amount))}
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  {data.currencies?.find(c => c.id === trans.currencyId)?.symbol || "$"}
+                                </span>
                               </span>
-                            </span>
-                          )
-                        }
-                        return "-"
-                      })()}
+                            )
+                          }
+                          return "-"
+                        })()
+                      )}
                     </TableCell>
                     <TableCell className={`text-center p-2 ${isSubdoc ? "text-[9px]" : "text-[10px]"}`}>
                       {lang === "fa" ? (
@@ -1038,23 +1167,9 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
                   </TableRow>
                 )
 
-                // For main documents, create an aggregated transaction to display totals
-                let displayTransaction: any = transaction
-                if (transaction.isMainDocument && hasSubdocs) {
-                  const totals = getSubdocumentTotals(transaction.id)
-                  displayTransaction = {
-                    ...transaction,
-                    quantity: totals.quantity || undefined,
-                    weight: totals.weight || undefined,
-                    amount: totals.amount,
-                    moneyIn: totals.moneyIn,
-                    moneyOut: totals.moneyOut
-                  }
-                }
-
                 return (
                   <React.Fragment key={transaction.id}>
-                    {renderRow(displayTransaction, false)}
+                    {renderRow(transaction, false, mainDocTotals)}
                     {isExpanded && subdocuments.map(subdoc => renderRow(subdoc, true))}
                   </React.Fragment>
                 )
