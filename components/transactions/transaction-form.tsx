@@ -1797,6 +1797,289 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         )
                       })}
                     </tbody>
+                    <tfoot className="bg-yellow-100/70 border-t-2 border-yellow-200">
+                      <tr>
+                        <td colSpan={5} className="text-center font-bold p-2 text-xs text-yellow-800">
+                          {t("totalSum") || "Total Sum"}
+                        </td>
+
+                        {/* Goods In */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [unit: string]: number } = {}
+                            const totalsSpecial: { [unit: string]: number } = {}
+                            let count = 0
+                            let countSpecial = 0
+
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "product_in" || tx.type === "income") && (tx.weight || tx.quantity)) {
+                                const isSpecial = tx.type === "income"
+                                const qty = Math.abs(tx.quantity || 0)
+                                const wgt = Math.abs(tx.weight || 0)
+
+                                if (isSpecial) {
+                                  if (qty) countSpecial += qty
+                                  if (wgt) {
+                                    const unit = tx.weightUnit || "ton"
+                                    totalsSpecial[unit] = (totalsSpecial[unit] || 0) + wgt
+                                  }
+                                } else {
+                                  if (qty) count += qty
+                                  if (wgt) {
+                                    const unit = tx.weightUnit || "ton"
+                                    totals[unit] = (totals[unit] || 0) + wgt
+                                  }
+                                }
+                              }
+                            })
+
+                            const renderElements = (c: number, t: { [u: string]: number }, label?: string, colorClass?: string) => {
+                              const els = []
+                              if (c > 0) els.push(<div key="count" className={`whitespace-nowrap font-semibold ${colorClass}`}>{c.toLocaleString()} <span className="text-[10px] opacity-70">Count</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
+                              Object.entries(t).forEach(([unit, val]) => {
+                                if (val > 0) els.push(<div key={unit} className={`whitespace-nowrap font-semibold ${colorClass}`}>{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
+                              })
+                              return els
+                            }
+
+                            const mainEls = renderElements(count, totals, undefined, "")
+                            const specialEls = renderElements(countSpecial, totalsSpecial, lang === "fa" ? "درآمد" : "Income", "text-blue-700")
+
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {mainEls}
+                                {specialEls.length > 0 && mainEls.length > 0 && <div className="border-t border-yellow-300 my-0.5"></div>}
+                                {specialEls}
+                                {mainEls.length === 0 && specialEls.length === 0 && "-"}
+                              </div>
+                            )
+                          })()}
+                        </td>
+
+                        {/* Goods Out */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [unit: string]: number } = {}
+                            const totalsSpecial: { [unit: string]: number } = {}
+                            let count = 0
+                            let countSpecial = 0
+
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "product_out" || tx.type === "expense") && (tx.weight || tx.quantity)) {
+                                const isSpecial = tx.type === "expense"
+                                const qty = Math.abs(tx.quantity || 0)
+                                const wgt = Math.abs(tx.weight || 0)
+
+                                if (isSpecial) {
+                                  if (qty) countSpecial += qty
+                                  if (wgt) {
+                                    const unit = tx.weightUnit || "ton"
+                                    totalsSpecial[unit] = (totalsSpecial[unit] || 0) + wgt
+                                  }
+                                } else {
+                                  if (qty) count += qty
+                                  if (wgt) {
+                                    const unit = tx.weightUnit || "ton"
+                                    totals[unit] = (totals[unit] || 0) + wgt
+                                  }
+                                }
+                              }
+                            })
+
+                            const renderElements = (c: number, t: { [u: string]: number }, label?: string, colorClass?: string) => {
+                              const els = []
+                              if (c > 0) els.push(<div key="count" className={`whitespace-nowrap font-semibold ${colorClass}`}>{c.toLocaleString()} <span className="text-[10px] opacity-70">Count</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
+                              Object.entries(t).forEach(([unit, val]) => {
+                                if (val > 0) els.push(<div key={unit} className={`whitespace-nowrap font-semibold ${colorClass}`}>{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}</div>)
+                              })
+                              return els
+                            }
+
+                            const mainEls = renderElements(count, totals, undefined, "")
+                            const specialEls = renderElements(countSpecial, totalsSpecial, lang === "fa" ? "هزینه" : "Expense", "text-blue-700")
+
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {mainEls}
+                                {specialEls.length > 0 && mainEls.length > 0 && <div className="border-t border-yellow-300 my-0.5"></div>}
+                                {specialEls}
+                                {mainEls.length === 0 && specialEls.length === 0 && "-"}
+                              </div>
+                            )
+                          })()}
+                        </td>
+
+                        {/* Goods Receivable */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [unit: string]: number } = {}
+                            let count = 0
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "product_purchase" || tx.type === "receivable") && (tx.weight || tx.quantity)) {
+                                if (tx.quantity) count += Math.abs(tx.quantity)
+                                if (tx.weight) {
+                                  const unit = tx.weightUnit || "ton"
+                                  totals[unit] = (totals[unit] || 0) + Math.abs(tx.weight)
+                                }
+                              }
+                            })
+                            const elements = []
+                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
+                            Object.entries(totals).forEach(([unit, val]) => {
+                              if (val > 0) elements.push(<div key={unit} className="whitespace-nowrap font-semibold">{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span></div>)
+                            })
+                            return elements.length > 0 ? elements : "-"
+                          })()}
+                        </td>
+
+                        {/* Goods Payable */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [unit: string]: number } = {}
+                            let count = 0
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "product_sale" || tx.type === "payable") && (tx.weight || tx.quantity)) {
+                                if (tx.quantity) count += Math.abs(tx.quantity)
+                                if (tx.weight) {
+                                  const unit = tx.weightUnit || "ton"
+                                  totals[unit] = (totals[unit] || 0) + Math.abs(tx.weight)
+                                }
+                              }
+                            })
+                            const elements = []
+                            if (count > 0) elements.push(<div key="count" className="whitespace-nowrap font-semibold">{count.toLocaleString()} <span className="text-[10px] opacity-70">Count</span></div>)
+                            Object.entries(totals).forEach(([unit, val]) => {
+                              if (val > 0) elements.push(<div key={unit} className="whitespace-nowrap font-semibold">{val.toLocaleString()} <span className="text-[10px] opacity-70">{unit}</span></div>)
+                            })
+                            return elements.length > 0 ? elements : "-"
+                          })()}
+                        </td>
+
+                        {/* Money In */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [currency: string]: number } = {}
+                            const totalsSpecial: { [currency: string]: number } = {}
+
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "cash_in" || tx.type === "income") && tx.amount) {
+                                const isSpecial = tx.type === "income"
+                                const currency = data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"
+                                const amt = Math.abs(tx.amount)
+
+                                if (isSpecial) {
+                                  totalsSpecial[currency] = (totalsSpecial[currency] || 0) + amt
+                                } else {
+                                  totals[currency] = (totals[currency] || 0) + amt
+                                }
+                              }
+                            })
+
+                            const renderMoney = (t: { [c: string]: number }, label?: string, colorClass?: string) => {
+                              return Object.entries(t).map(([curr, val]) => (
+                                <div key={curr} className={`whitespace-nowrap font-bold ${colorClass}`}>
+                                  {val.toLocaleString()} <span className="text-[10px] opacity-70">{curr}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}
+                                </div>
+                              ))
+                            }
+
+                            const mainEls = renderMoney(totals, undefined, "text-red-700")
+                            const specialEls = renderMoney(totalsSpecial, lang === "fa" ? "درآمد" : "Income", "text-blue-700")
+
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {mainEls}
+                                {specialEls.length > 0 && mainEls.length > 0 && <div className="border-t border-yellow-300 my-0.5"></div>}
+                                {specialEls}
+                                {mainEls.length === 0 && specialEls.length === 0 && "-"}
+                              </div>
+                            )
+                          })()}
+                        </td>
+
+                        {/* Money Out */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [currency: string]: number } = {}
+                            const totalsSpecial: { [currency: string]: number } = {}
+
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "cash_out" || tx.type === "expense") && tx.amount) {
+                                const isSpecial = tx.type === "expense"
+                                const currency = data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"
+                                const amt = Math.abs(tx.amount)
+
+                                if (isSpecial) {
+                                  totalsSpecial[currency] = (totalsSpecial[currency] || 0) + amt
+                                } else {
+                                  totals[currency] = (totals[currency] || 0) + amt
+                                }
+                              }
+                            })
+
+                            const renderMoney = (t: { [c: string]: number }, label?: string, colorClass?: string) => {
+                              return Object.entries(t).map(([curr, val]) => (
+                                <div key={curr} className={`whitespace-nowrap font-bold ${colorClass}`}>
+                                  {val.toLocaleString()} <span className="text-[10px] opacity-70">{curr}</span> {label && <span className="text-[9px] opacity-75">({label})</span>}
+                                </div>
+                              ))
+                            }
+
+                            const mainEls = renderMoney(totals, undefined, "text-green-700")
+                            const specialEls = renderMoney(totalsSpecial, lang === "fa" ? "هزینه" : "Expense", "text-blue-700")
+
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {mainEls}
+                                {specialEls.length > 0 && mainEls.length > 0 && <div className="border-t border-yellow-300 my-0.5"></div>}
+                                {specialEls}
+                                {mainEls.length === 0 && specialEls.length === 0 && "-"}
+                              </div>
+                            )
+                          })()}
+                        </td>
+
+                        {/* Money Receivable */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [currency: string]: number } = {}
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "receivable" || tx.type === "product_sale") && tx.amount) {
+                                const currency = data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"
+                                totals[currency] = (totals[currency] || 0) + Math.abs(tx.amount)
+                              }
+                            })
+                            const elements = Object.entries(totals).map(([curr, val]) => (
+                              <div key={curr} className="whitespace-nowrap font-bold text-green-700">
+                                {val.toLocaleString()} <span className="text-[10px] opacity-70">{curr}</span>
+                              </div>
+                            ))
+                            return elements.length > 0 ? elements : "-"
+                          })()}
+                        </td>
+
+                        {/* Money Payable */}
+                        <td className="p-2 text-center text-xs align-top">
+                          {(() => {
+                            const totals: { [currency: string]: number } = {}
+                            temporaryTransactions.forEach(tx => {
+                              if ((tx.type === "payable" || tx.type === "product_purchase") && tx.amount) {
+                                const currency = data.currencies?.find(c => c.id === tx.currencyId)?.symbol || "$"
+                                totals[currency] = (totals[currency] || 0) + Math.abs(tx.amount)
+                              }
+                            })
+                            const elements = Object.entries(totals).map(([curr, val]) => (
+                              <div key={curr} className="whitespace-nowrap font-bold text-red-700">
+                                {val.toLocaleString()} <span className="text-[10px] opacity-70">{curr}</span>
+                              </div>
+                            ))
+                            return elements.length > 0 ? elements : "-"
+                          })()}
+                        </td>
+
+                        <td colSpan={3} className="bg-background"></td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </div>
