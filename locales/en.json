@@ -257,5 +257,14 @@
   "productOrAmountRequired": "Please enter either Product details (Type & Weight/Quantity) or Amount.",
   "weightUnit_original": "Original Unit",
   "colReceivable": "Receivable",
-  "colPayable": "Payable"
+  "colPayable": "Payable",
+  "companyInfoTitle": "Company Info (For Print)",
+  "companyNameLabel": "Company Name / Owner",
+  "companyNamePlaceholder": "e.g. Zaniar Flour Trading Co.",
+  "managerPhoneLabel": "Manager Phone",
+  "accountant1PhoneLabel": "Accountant 1 Phone",
+  "accountant2PhoneLabel": "Accountant 2 Phone",
+  "emailLabel": "Email",
+  "saveSettings": "Save Settings",
+  "settingsSaved": "Settings saved successfully!"
 }

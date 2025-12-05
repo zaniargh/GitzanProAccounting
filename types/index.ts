@@ -166,6 +166,15 @@ export interface AppData {
   settings?: {
     baseCurrencyId?: string
     baseWeightUnit?: string
+    companyInfo?: {
+      nameFa: string
+      managerPhone: string
+      accountant1Phone: string
+      accountant2Phone: string
+      email: string
+      addressFa?: string
+      website?: string
+    }
   }
   lastUpdated?: number // Timestamp of last modification
 }

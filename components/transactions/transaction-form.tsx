@@ -13,13 +13,14 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Package, DollarSign, Trash2 } from "lucide-react"
+import { Package, DollarSign, Trash2, Printer } from "lucide-react"
 import type { Transaction, AppData, TransactionType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import type { ProductType } from "@/types"
 import { TransactionList } from "./transaction-list"
 import { useLang } from "@/components/language-provider"
 import { formatBothDatesWithTime } from "@/lib/date-utils"
+import { buildTemporaryDocsHTML } from "@/components/print/build-temporary-docs-html"
 
 interface TransactionFormProps {
   data: AppData
@@ -1502,6 +1503,39 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                   disabled={data.customers.length === 0 || (isFlourTransaction && productTypes.length === 0)}
                 >
                   {t("finalizeSubmission")}
+                </Button>
+              )}
+              {temporaryTransactions.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    const html = buildTemporaryDocsHTML({
+                      transactions: temporaryTransactions,
+                      currencies: data.currencies || [],
+                      productTypes: productTypes,
+                      customers: data.customers,
+                      lang: lang as "fa" | "en",
+                      company: data.settings?.companyInfo ? {
+                        nameFa: data.settings.companyInfo.nameFa,
+                        managerPhone: data.settings.companyInfo.managerPhone,
+                        accountant1Phone: data.settings.companyInfo.accountant1Phone,
+                        accountant2Phone: data.settings.companyInfo.accountant2Phone,
+                        email: data.settings.companyInfo.email,
+                        addressFa: data.settings.companyInfo.addressFa,
+                        website: data.settings.companyInfo.website
+                      } : undefined
+                    })
+                    const win = window.open("", "_blank")
+                    if (win) {
+                      win.document.write(html)
+                      win.document.close()
+                    }
+                  }}
+                  title={t("print")}
+                >
+                  <Printer className="h-4 w-4" />
                 </Button>
               )}
             </div>

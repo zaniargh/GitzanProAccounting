@@ -3,6 +3,8 @@ import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import type { AppData, ProductType, BulkTransaction } from "@/types"
 
 import { useLang } from "@/components/language-provider"
@@ -23,7 +25,7 @@ function safeParse<T = any>(key: string): T | null {
 
 // -------------------- Component --------------------
 export default function Settings({ data, onDataChange }: SettingsProps) {
-    const { lang } = useLang()
+    const { lang, t } = useLang()
     const fileRef = useRef<HTMLInputElement | null>(null)
     const [isBackingUp, setIsBackingUp] = useState(false)
 
@@ -586,8 +588,152 @@ ${totalRecords.productTypes || 0} نوع آرد`
                     <li>• فایل بک‌آپ در تمام مرورگرها قابل بازیابی است</li>
                 </ul>
             </div>
+
+            {/* Company Info Settings */}
+            <div className="space-y-4">
+                <h2 className="text-lg font-semibold">{t("companyInfoTitle")}</h2>
+                <Card className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>{t("companyNameLabel")}</Label>
+                            <Input
+                                value={data.settings?.companyInfo?.nameFa || ""}
+                                onChange={(e) => {
+                                    onDataChange({
+                                        ...data,
+                                        settings: {
+                                            ...data.settings,
+                                            companyInfo: {
+                                                managerPhone: "",
+                                                accountant1Phone: "",
+                                                accountant2Phone: "",
+                                                email: "",
+                                                ...data.settings?.companyInfo,
+                                                nameFa: e.target.value,
+                                            }
+                                        }
+                                    })
+                                }}
+                                placeholder={t("companyNamePlaceholder")}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{t("emailLabel")}</Label>
+                            <Input
+                                dir="ltr"
+                                value={data.settings?.companyInfo?.email || ""}
+                                onChange={(e) => {
+                                    onDataChange({
+                                        ...data,
+                                        settings: {
+                                            ...data.settings,
+                                            companyInfo: {
+                                                nameFa: "",
+                                                managerPhone: "",
+                                                accountant1Phone: "",
+                                                accountant2Phone: "",
+                                                ...data.settings?.companyInfo,
+                                                email: e.target.value,
+                                            }
+                                        }
+                                    })
+                                }}
+                                placeholder="example@adrom.com"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{t("managerPhoneLabel")}</Label>
+                            <Input
+                                dir="ltr"
+                                value={data.settings?.companyInfo?.managerPhone || ""}
+                                onChange={(e) => {
+                                    onDataChange({
+                                        ...data,
+                                        settings: {
+                                            ...data.settings,
+                                            companyInfo: {
+                                                nameFa: "",
+                                                accountant1Phone: "",
+                                                accountant2Phone: "",
+                                                email: "",
+                                                ...data.settings?.companyInfo,
+                                                managerPhone: e.target.value,
+                                            }
+                                        }
+                                    })
+                                }}
+                                placeholder="+964..."
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{t("accountant1PhoneLabel")}</Label>
+                            <Input
+                                dir="ltr"
+                                value={data.settings?.companyInfo?.accountant1Phone || ""}
+                                onChange={(e) => {
+                                    onDataChange({
+                                        ...data,
+                                        settings: {
+                                            ...data.settings,
+                                            companyInfo: {
+                                                nameFa: "",
+                                                managerPhone: "",
+                                                accountant2Phone: "",
+                                                email: "",
+                                                ...data.settings?.companyInfo,
+                                                accountant1Phone: e.target.value,
+                                            }
+                                        }
+                                    })
+                                }}
+                                placeholder="+964..."
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{t("accountant2PhoneLabel")}</Label>
+                            <Input
+                                dir="ltr"
+                                value={data.settings?.companyInfo?.accountant2Phone || ""}
+                                onChange={(e) => {
+                                    onDataChange({
+                                        ...data,
+                                        settings: {
+                                            ...data.settings,
+                                            companyInfo: {
+                                                nameFa: "",
+                                                managerPhone: "",
+                                                accountant1Phone: "",
+                                                email: "",
+                                                ...data.settings?.companyInfo,
+                                                accountant2Phone: e.target.value,
+                                            }
+                                        }
+                                    })
+                                }}
+                                placeholder="+964..."
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end">
+                        <Button
+                            onClick={async () => {
+                                // Trigger sync to ensure persistence
+                                await handleSyncNow()
+                                // The alert is handled in handleSyncNow, but we might want a specific one?
+                                // handleSyncNow already alerts "Synced...". 
+                                // Ideally we refactor handleSyncNow to take a slient flag, but user asked for "Save" button. 
+                                // Re-using handleSyncNow is safest for actual persistence in this architecture.
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto"
+                        >
+                            {t("saveSettings")}
+                        </Button>
+                    </div>
+                </Card>
+            </div>
         </div>
     )
+
 }
 
 export { Settings as SettingsCoreParts }

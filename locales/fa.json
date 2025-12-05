@@ -256,5 +256,14 @@
   "sortInventoryHigh": "موجودی (زیاد به کم)",
   "sortInventoryLow": "موجودی (کم به زیاد)",
   "productOrAmountRequired": "لطفاً یا مشخصات کالا (نوع و وزن/تعداد) یا مبلغ را وارد کنید.",
-  "weightUnit_original": "واحد اصلی"
+  "weightUnit_original": "واحد اصلی",
+  "companyInfoTitle": "اطلاعات شرکت (برای چاپ)",
+  "companyNameLabel": "نام شرکت / صاحب حساب",
+  "companyNamePlaceholder": "مثال: شرکت بازرگانی آرد زانیار",
+  "managerPhoneLabel": "تلفن مدیر",
+  "accountant1PhoneLabel": "تلفن حسابدار ۱",
+  "accountant2PhoneLabel": "تلفن حسابدار ۲",
+  "emailLabel": "ایمیل",
+  "saveSettings": "ذخیره تنظیمات",
+  "settingsSaved": "تنظیمات با موفقیت ذخیره شد!"
 }
