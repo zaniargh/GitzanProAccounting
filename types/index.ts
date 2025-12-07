@@ -193,3 +193,10 @@ export interface AppData {
   }
   lastUpdated?: number // Timestamp of last modification
 }
+export interface CompanyInfo {
+  nameFa: string
+  addressFa: string
+  phones: string[]
+  website: string
+  email: string
+}
