@@ -152,6 +152,20 @@ export interface ForeignTransactionDocument {
   items: ForeignTransactionItem[]
 }
 
+export interface ExtraTransactionItem {
+  id: string
+  name: string
+  debt: number
+  deduction: number
+  // remainingDebt is calculated: debt - deduction
+}
+
+export interface ExtraTransactionDocument {
+  id: string
+  createdAt: string
+  items: ExtraTransactionItem[]
+}
+
 export interface AppData {
   customerGroups: CustomerGroup[]
   customers: Customer[]
@@ -163,6 +177,7 @@ export interface AppData {
   bulkTransactionsTehran?: any[] // اضافه کردن bulkTransactionsTehran
   documents: Document[] // اضافه کردن documents
   foreignTransactions?: ForeignTransactionDocument[] // معاملات خارجی
+  extraTransactions?: ExtraTransactionDocument[] // معاملات جدید (بدهی/کسری)
   settings?: {
     baseCurrencyId?: string
     baseWeightUnit?: string

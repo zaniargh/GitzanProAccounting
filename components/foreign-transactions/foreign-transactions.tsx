@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useLang } from "@/components/language-provider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { AppData, ForeignTransactionDocument, ForeignTransactionItem } from "@/types"
+import type { AppData, ForeignTransactionDocument, ForeignTransactionItem, ExtraTransactionDocument, ExtraTransactionItem } from "@/types"
 import { Plus, Trash2, Printer, Search, Edit, X } from "lucide-react"
 
 function generateId() {
@@ -48,6 +48,13 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
 
     // Edit State
     const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null)
+
+    // Extra Transactions State
+    const [extraName, setExtraName] = useState("")
+    const [extraDebt, setExtraDebt] = useState("")
+    const [extraDeduction, setExtraDeduction] = useState("")
+    const [pendingExtraItems, setPendingExtraItems] = useState<ExtraTransactionItem[]>([])
+    const [editingExtraDocId, setEditingExtraDocId] = useState<string | null>(null)
 
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault()
@@ -276,6 +283,222 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
         const printWindow = window.open("", "_blank")
         if (!printWindow) return
         printWindow.document.write(printContent(searchTerm, firstDocPhone, aggregatedItems))
+        printWindow.document.close()
+        printWindow.focus()
+        printWindow.print()
+    }
+
+    // Extra Transactions Handlers
+    const handleAddExtraItem = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!extraName || !extraDebt) return
+
+        const newItem: ExtraTransactionItem = {
+            id: generateId(),
+            name: extraName,
+            debt: Number(extraDebt),
+            deduction: Number(extraDeduction) || 0,
+        }
+
+        setPendingExtraItems([...pendingExtraItems, newItem])
+
+        // Reset fields
+        setExtraName("")
+        setExtraDebt("")
+        setExtraDeduction("")
+    }
+
+    const handleRemoveExtraItem = (id: string) => {
+        setPendingExtraItems(pendingExtraItems.filter(item => item.id !== id))
+    }
+
+    const handleSubmitExtra = () => {
+        if (pendingExtraItems.length === 0) return
+
+        if (editingExtraDocId) {
+            // Update
+            const updatedDocs = (data.extraTransactions || []).map(doc => {
+                if (doc.id === editingExtraDocId) {
+                    return {
+                        ...doc,
+                        items: pendingExtraItems
+                    }
+                }
+                return doc
+            })
+            onDataChange({
+                ...data,
+                extraTransactions: updatedDocs,
+            })
+            setEditingExtraDocId(null)
+        } else {
+            // Create New
+            const newDoc: ExtraTransactionDocument = {
+                id: generateId(),
+                createdAt: new Date().toISOString(),
+                items: pendingExtraItems
+            }
+            onDataChange({
+                ...data,
+                extraTransactions: [...(data.extraTransactions || []), newDoc],
+            })
+        }
+        setPendingExtraItems([])
+    }
+
+    const handleDeleteExtraDoc = (id: string) => {
+        if (confirm(t("deleteConfirmation"))) {
+            const updatedDocs = (data.extraTransactions || []).filter(doc => doc.id !== id)
+            onDataChange({
+                ...data,
+                extraTransactions: updatedDocs,
+            })
+            if (editingExtraDocId === id) {
+                setEditingExtraDocId(null)
+                setPendingExtraItems([])
+            }
+        }
+    }
+
+    const handleEditExtraDoc = (doc: ExtraTransactionDocument) => {
+        setEditingExtraDocId(doc.id)
+        setPendingExtraItems([...doc.items])
+        // Scroll to extra section
+        const element = document.getElementById('extra-transactions-section')
+        if (element) element.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    const handleCancelExtraEdit = () => {
+        setEditingExtraDocId(null)
+        setPendingExtraItems([])
+    }
+
+    const printExtraContent = (items: ExtraTransactionItem[]) => {
+        const totalDebt = items.reduce((sum, item) => sum + item.debt, 0)
+        const totalDeduction = items.reduce((sum, item) => sum + item.deduction, 0)
+        const totalRemaining = totalDebt - totalDeduction
+
+        return `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head>
+        <meta charset="UTF-8">
+        <title>کوی پاره ی ئه وانه ی لییان براوه</title>
+         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Vazirmatn', sans-serif; font-size: 20px; line-height: 1.6; color: #333; direction: rtl; padding: 40px; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #666; padding-bottom: 20px; }
+          .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; border: 2px solid #444; border-radius: 12px; overflow: hidden; }
+          th, td { border: 1px solid #ccc; padding: 12px 15px; text-align: center; font-size: 20px; }
+          th { background-color: #f0f0f0; font-weight: 700; border-bottom: 2px solid #444; color: #000; }
+          .total-row { font-weight: 800; background-color: #e8e8e8; font-size: 22px; color: #000; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>کوی پاره ی ئه وانه ی لییان براوه</h1>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px">#</th>
+              <th>ناوه کان</th>
+              <th>قه رز</th>
+              <th>له برین</th>
+              <th>قه رزی ماوه</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((item, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${item.name}</td>
+                <td>${item.debt.toLocaleString()}</td>
+                <td>${item.deduction.toLocaleString()}</td>
+                <td>${(item.debt - item.deduction).toLocaleString()}</td>
+              </tr>
+            `).join("")}
+             <tr class="total-row">
+              <td colspan="2">${t("totalSum")}</td>
+              <td>${totalDebt.toLocaleString()}</td>
+              <td>${totalDeduction.toLocaleString()}</td>
+              <td>${totalRemaining.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `
+    }
+
+    const handlePrintExtraDoc = (doc: ExtraTransactionDocument) => {
+        const printWindow = window.open("", "_blank")
+        if (!printWindow) return
+        printWindow.document.write(printExtraContent(doc.items))
+        printWindow.document.close()
+        printWindow.focus()
+        printWindow.print()
+    }
+
+    const handleBlankPrint = () => {
+        const printWindow = window.open("", "_blank")
+        if (!printWindow) return
+
+        // Generate 36 empty rows for A4
+        const emptyRows = Array(36).fill(null)
+
+        const content = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head>
+        <meta charset="UTF-8">
+        <title>کوی پاره ی ئه وانه ی لییان براوه (خالی)</title>
+         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Vazirmatn', sans-serif; font-size: 20px; line-height: 1.6; color: #333; direction: rtl; padding: 40px; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #666; padding-bottom: 20px; }
+          .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 30px; border: 2px solid #444; border-radius: 12px; overflow: hidden; table-layout: fixed; }
+          th, td { border: 1px solid #ccc; padding: 5px; text-align: center; font-size: 20px; height: 35px; }
+          th { background-color: #f0f0f0; font-weight: 700; border-bottom: 2px solid #444; color: #000; }
+          .total-row { font-weight: 800; background-color: #e8e8e8; font-size: 22px; color: #000; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>کوی پاره ی ئه وانه ی لییان براوه</h1>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 8%">#</th>
+              <th style="width: 32%">ناوه کان</th>
+              <th style="width: 20%">قه رز</th>
+              <th style="width: 20%">له برین</th>
+              <th style="width: 20%">قه رزی ماوه</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${emptyRows.map((_, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `
+        printWindow.document.write(content)
         printWindow.document.close()
         printWindow.focus()
         printWindow.print()
@@ -520,6 +743,176 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Extra Transactions Section */}
+            <div id="extra-transactions-section" className="border-t pt-8 mt-8">
+                <Card className={editingExtraDocId ? "border-2 border-primary" : ""}>
+                    <CardHeader>
+                        <div className="flex justify-between items-center">
+                            <CardTitle>{t("extraTransactionsTitle")}</CardTitle>
+                            {editingExtraDocId && (
+                                <Button variant="ghost" size="sm" onClick={handleCancelExtraEdit}>
+                                    <X className="h-4 w-4 mr-2" />
+                                    {t("cancelEdit")}
+                                </Button>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <form onSubmit={handleAddExtraItem} className="space-y-4 p-4 border rounded-lg">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="space-y-2">
+                                    <Label>{t("name")}</Label>
+                                    <Input
+                                        value={extraName}
+                                        onChange={(e) => setExtraName(e.target.value)}
+                                        placeholder={t("name")}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>{t("debt")}</Label>
+                                    <Input
+                                        type="number"
+                                        value={extraDebt}
+                                        onChange={(e) => setExtraDebt(e.target.value)}
+                                        placeholder="0"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>{t("deduction")}</Label>
+                                    <Input
+                                        type="number"
+                                        value={extraDeduction}
+                                        onChange={(e) => setExtraDeduction(e.target.value)}
+                                        placeholder="0"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>{t("remainingDebt")}</Label>
+                                    <Input
+                                        value={extraDebt ? (Number(extraDebt) - (Number(extraDeduction) || 0)).toString() : ""}
+                                        readOnly
+                                        className="bg-muted"
+                                    />
+                                </div>
+                            </div>
+                            <Button type="submit" variant="secondary" className="w-full">
+                                <Plus className="w-4 h-4 mr-2" />
+                                {t("addItem")}
+                            </Button>
+                        </form>
+
+                        {pendingExtraItems.length > 0 && (
+                            <div className="space-y-2">
+                                <h3 className="font-semibold text-sm">{t("pendingItems")}</h3>
+                                <div className="border rounded-md overflow-hidden">
+                                    <Table className="border-collapse border">
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="border">{t("name")}</TableHead>
+                                                <TableHead className="border">{t("debt")}</TableHead>
+                                                <TableHead className="border">{t("deduction")}</TableHead>
+                                                <TableHead className="border">{t("remainingDebt")}</TableHead>
+                                                <TableHead className="w-[50px] border"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {pendingExtraItems.map((item) => (
+                                                <TableRow key={item.id}>
+                                                    <TableCell className="border">{item.name}</TableCell>
+                                                    <TableCell className="border">{item.debt.toLocaleString()}</TableCell>
+                                                    <TableCell className="border">{item.deduction.toLocaleString()}</TableCell>
+                                                    <TableCell className="border">{(item.debt - item.deduction).toLocaleString()}</TableCell>
+                                                    <TableCell className="border">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                                                            onClick={() => handleRemoveExtraItem(item.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                                <Button
+                                    className="w-full mt-4"
+                                    size="lg"
+                                    onClick={handleSubmitExtra}
+                                >
+                                    {editingExtraDocId ? t("updateDocument") : t("submitExtraTransactions")}
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* List of Extra Transactions */}
+                <Card className="mt-6">
+                    <CardHeader>
+                        <div className="flex justify-between items-center">
+                            <CardTitle>{t("extraTransactionsList")}</CardTitle>
+                            <Button variant="outline" size="sm" onClick={handleBlankPrint}>
+                                <Printer className="h-4 w-4 ml-2" />
+                                {t("blankPrint")}
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="overflow-x-auto">
+                            <Table className="border-collapse border">
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="border">{t("date")}</TableHead>
+                                        <TableHead className="border">{t("itemCount")}</TableHead>
+                                        <TableHead className="border">{t("debt")}</TableHead>
+                                        <TableHead className="border">{t("remainingDebt")}</TableHead>
+                                        <TableHead className="border">{t("actions")}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {(data.extraTransactions || []).length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={5} className="text-center text-muted-foreground border">
+                                                {t("noDocumentsRegistered")}
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        (data.extraTransactions || []).slice().reverse().map(doc => {
+                                            const totalDebt = doc.items.reduce((sum, i) => sum + i.debt, 0)
+                                            const totalRemaining = doc.items.reduce((sum, i) => sum + (i.debt - i.deduction), 0)
+                                            return (
+                                                <TableRow key={doc.id} className={editingExtraDocId === doc.id ? "bg-muted/50" : ""}>
+                                                    <TableCell className="border">{new Date(doc.createdAt).toLocaleDateString('fa-IR')}</TableCell>
+                                                    <TableCell className="border">{doc.items.length}</TableCell>
+                                                    <TableCell className="border">{totalDebt.toLocaleString()}</TableCell>
+                                                    <TableCell className="border">{totalRemaining.toLocaleString()}</TableCell>
+                                                    <TableCell className="border">
+                                                        <div className="flex gap-2">
+                                                            <Button variant="ghost" size="sm" onClick={() => handleEditExtraDoc(doc)}>
+                                                                <Edit className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" onClick={() => handlePrintExtraDoc(doc)}>
+                                                                <Printer className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteExtraDoc(doc.id)}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     )
 }

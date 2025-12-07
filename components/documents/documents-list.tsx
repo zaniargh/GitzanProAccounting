@@ -13,6 +13,7 @@ import { Printer, Download, Edit, Trash2, ChevronUp, ChevronDown, ChevronLeft, C
 import { formatPersianDate, formatGregorianDate } from "@/lib/date-utils"
 import type { Transaction, Customer, CustomerGroup, ProductType, Currency, BankAccount } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
+import { formatNumber } from "@/lib/number-utils"
 const getAmountClass = (type: string) => {
   // نوع‌هایی که باید سبز باشند
   const green = new Set([
@@ -137,7 +138,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
   const SortableHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
     <TableHead
-      className="text-center print:text-xs cursor-pointer hover:bg-muted/50 select-none"
+      className="text-center print:text-xs cursor-pointer hover:bg-muted/50 select-none p-1 h-auto"
       onClick={() => handleSort(field)}
     >
       <div className="flex items-center justify-center gap-1">
@@ -506,7 +507,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
         // قیمت واحد (اگه داری)
         const unit = getUnitPrice(t)
-        const unitCell = unit != null ? `${unit.toLocaleString("en-US")} دولار/تن` : "-"
+        const unitCell = unit != null ? `${formatNumber(unit)} دولار/تن` : "-"
 
         return `
         <tr>
@@ -514,11 +515,11 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           <td>${getTransactionTypeLabel(t.type)}</td>
           <td>${getCustomerName(t.customerId)}</td>
           <td>${getProductTypeName(t.productTypeId)}</td>
-          <td>${t.weight ? (t.weight).toLocaleString("en-US") + " تن" : "-"}</td>
+          <td>${t.weight ? formatNumber(t.weight) + " تن" : "-"}</td>
           <td>${unitCell}</td>
-          <td><span class="${dollarClass}">${(t.amount || 0).toLocaleString("en-US")} دولار</span></td>
-          <td>${(rb.cashBalances[t.currencyId || "default"] || 0).toLocaleString("en-US")} ${badge(rb.cashBalances[t.currencyId || "default"] || 0)}</td>
-          <td>${productVal.toLocaleString("en-US")} ${badge(productVal)}</td>
+          <td><span class="${dollarClass}">${formatNumber(t.amount || 0)} دولار</span></td>
+          <td>${formatNumber(rb.cashBalances[t.currencyId || "default"] || 0)} ${badge(rb.cashBalances[t.currencyId || "default"] || 0)}</td>
+          <td>${formatNumber(productVal)} ${badge(productVal)}</td>
           <td>
             <div>${formatDate(t.date)}</div>
             <div class="subtle small">${formatDateGregorian(t.date)}</div>
@@ -678,14 +679,14 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           const isThisCurrency = c.id === txCurrencyId
           // اگر بله، مبلغ را نشان بده، وگرنه خط تیره
           if (isThisCurrency) {
-            return `<td><span class="${dollarClass}">${(t.amount || 0).toLocaleString("en-US")}</span></td>`
+            return `<td><span class="${dollarClass}">${formatNumber(t.amount || 0)}</span></td>`
           } else {
             return `<td>-</td>`
           }
         }).join("")}
           ${displayCurrencies.map(c => {
           const bal = balances[c.id] || 0
-          return `<td>${bal.toLocaleString("en-US")} ${badge(bal)}</td>`
+          return `<td>${formatNumber(bal)} ${badge(bal)}</td>`
         }).join("")}
           <td>
             <div class="ltr">${formatDateGregorian(t.date)}</div>
@@ -910,7 +911,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       return `
               <div class="summary-item">
                 <div class="summary-label">ئەنقەد ${c.name} لامانە</div>
-                <div class="summary-value ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : ""}">${finalBal.toLocaleString("en-US")}</div>
+                <div class="summary-value ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : ""}">${formatNumber(finalBal)}</div>
                 <div class="summary-status ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : "zero"}">
                   ${finalBal > 0 ? "قەرز" : finalBal < 0 ? "بە قەرز" : "سفر"}
                 </div>
@@ -1171,7 +1172,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                   <SortableHeader field="productBalance">ت.حساب محصول</SortableHeader>
                   <SortableHeader field="date">تاریخ</SortableHeader>
                   <SortableHeader field="description">توضیح</SortableHeader>
-                  <TableHead className="text-center print:hidden w-[80px]">عملیات</TableHead>
+                  <TableHead className="text-center print:hidden w-[80px] p-1 h-auto">عملیات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1183,49 +1184,49 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
                   return (
                     <TableRow key={transaction.id}>
-                      <TableCell className="text-center font-mono text-xs p-2">
+                      <TableCell className="text-center font-mono text-xs p-1">
                         {transaction.documentNumber || "-"}
                       </TableCell>
-                      <TableCell className="text-center text-xs p-2">
+                      <TableCell className="text-center text-xs p-1">
                         <Badge variant="outline" className="text-[10px] px-1 py-0">
                           {getTransactionTypeLabel(transaction.type)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center text-xs p-2 max-w-[100px] truncate">
+                      <TableCell className="text-center text-xs p-1 max-w-[80px] truncate">
                         {getCustomerName(transaction.customerId)}
                       </TableCell>
-                      <TableCell className="text-center text-xs p-2 max-w-[80px] truncate">
+                      <TableCell className="text-center text-xs p-1 max-w-[60px] truncate">
                         {getProductTypeName(transaction.productTypeId)}
                       </TableCell>
-                      <TableCell className="text-center text-xs p-2 whitespace-nowrap">{transaction.weight ? `${(transaction.weight || 0).toLocaleString()}` : "-"}</TableCell>
-                      <TableCell className="text-center text-xs p-2 whitespace-nowrap">
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">{transaction.weight ? `${formatNumber(transaction.weight || 0)}` : "-"}</TableCell>
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">
                         {(() => {
                           const unit = getUnitPrice(transaction)
-                          return unit != null ? `${unit.toLocaleString()}` : "-"
+                          return unit != null ? `${formatNumber(unit)}` : "-"
                         })()}
                       </TableCell>
 
-                      <TableCell className="text-center text-xs p-2 whitespace-nowrap">
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">
                         {transaction.type === "cash_in" ? (
                           <span className="text-red-600">
-                            {(transaction.amount || 0).toLocaleString()}
+                            {formatNumber(transaction.amount || 0)}
                           </span>
                         ) : transaction.type === "cash_out" ? (
                           <span className="text-green-600">
-                            {(transaction.amount || 0).toLocaleString()}
+                            {formatNumber(transaction.amount || 0)}
                           </span>
                         ) : transaction.type === "product_purchase" ? (
                           <span className="text-red-600">
-                            {(transaction.amount || 0).toLocaleString()}
+                            {formatNumber(transaction.amount || 0)}
                           </span>
                         ) : transaction.type === "product_sale" ? (
                           <span className="text-green-600">
-                            {(transaction.amount || 0).toLocaleString()}
+                            {formatNumber(transaction.amount || 0)}
                           </span>
 
                         ) : transaction.type === "expense" ? (
                           <span className="text-red-600">
-                            {(transaction.amount || 0).toLocaleString()}
+                            {formatNumber(transaction.amount || 0)}
                           </span>
                         ) : (
                           "-"
@@ -1238,9 +1239,9 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                       {displayCurrencies.map(currency => {
                         const balance = runningBalance?.cashBalances?.[currency.id] || 0
                         return (
-                          <TableCell key={currency.id} className="text-center text-xs p-2">
+                          <TableCell key={currency.id} className="text-center text-xs p-1">
                             <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                              <span className="text-[10px]">{balance.toLocaleString()}</span>
+                              <span className="text-[10px]">{formatNumber(balance)}</span>
                               {debtBadge(balance)}
                             </div>
                           </TableCell>
@@ -1248,7 +1249,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                       })}
 
                       {/* ته حساب محصولی + Badge */}
-                      <TableCell className="text-center text-xs p-2">
+                      <TableCell className="text-center text-xs p-1">
                         {(() => {
                           if (!runningBalance) return "-"
                           const mainProductType = transaction.productTypeId
@@ -1256,21 +1257,21 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                           const productVal = runningBalance.productBalances?.[mainProductType] || 0
                           return (
                             <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                              <span className="text-[10px]">{productVal.toLocaleString()}</span>
+                              <span className="text-[10px]">{formatNumber(productVal)}</span>
                               {debtBadge(productVal)}
                             </div>
                           )
                         })()}
                       </TableCell>
 
-                      <TableCell className="text-center text-[10px] p-2 whitespace-nowrap">
+                      <TableCell className="text-center text-[10px] p-1 whitespace-nowrap">
                         <div>{formatDate(transaction.date)}</div>
                         <div className="text-muted-foreground">
                           {formatDateGregorian(transaction.date)}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center text-xs p-2 max-w-[120px] truncate text-muted-foreground" title={transaction.description || "-"}>{transaction.description || "-"}</TableCell>
-                      <TableCell className="text-center print:hidden p-1">
+                      <TableCell className="text-center text-xs p-1 max-w-[100px] truncate text-muted-foreground" title={transaction.description || "-"}>{transaction.description || "-"}</TableCell>
+                      <TableCell className="text-center print:hidden p-0.5">
                         <div className="flex gap-0.5 justify-center">
                           <Button
                             size="sm"
@@ -1304,25 +1305,25 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
               <div className="text-center">
                 <div className="font-medium print:text-xs">کل ورود محصول</div>
                 <div className="text-lg font-bold text-blue-600 print:text-sm">
-                  {totals.totalProductIn.toLocaleString()} تن
+                  {formatNumber(totals.totalProductIn)} تن
                 </div>
               </div>
               <div className="text-center">
                 <div className="font-medium print:text-xs">کل خروج محصول</div>
                 <div className="text-lg font-bold text-orange-600 print:text-sm">
-                  {totals.totalProductOut.toLocaleString()} تن
+                  {formatNumber(totals.totalProductOut)} تن
                 </div>
               </div>
               <div className="text-center">
                 <div className="font-medium print:text-xs">کل خرید محصول</div>
                 <div className="text-lg font-bold text-green-600 print:text-sm">
-                  {totals.totalProductPurchase.toLocaleString()} تن
+                  {formatNumber(totals.totalProductPurchase)} تن
                 </div>
               </div>
               <div className="text-center">
                 <div className="font-medium print:text-xs">کل فروش محصول</div>
                 <div className="text-lg font-bold text-purple-600 print:text-sm">
-                  {totals.totalProductSale.toLocaleString()} تن
+                  {formatNumber(totals.totalProductSale)} تن
                 </div>
               </div>
               <div className="text-center">
@@ -1330,7 +1331,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                 <div
                   className={`text-lg font-bold print:text-sm ${totals.totalAmount >= 0 ? "text-gray-800" : "text-red-600"}`}
                 >
-                  {totals.totalAmount.toLocaleString()} دلار
+                  {formatNumber(totals.totalAmount)} دلار
                 </div>
               </div>
 

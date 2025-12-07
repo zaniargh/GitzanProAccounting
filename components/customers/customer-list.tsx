@@ -14,6 +14,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import type { Customer, AppData, ProductType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import { useLang } from "@/components/language-provider"
+import { formatNumber } from "@/lib/number-utils"
+import { calculateCustomerBalance } from "@/lib/balance-utils"
 
 interface CustomerListProps {
   data: AppData
@@ -63,9 +65,8 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
     return productTypes.find((type) => type.id === productTypeId)?.name || "نامشخص"
   }
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat("en-US").format(num)
-  }
+  // formatNumber imported from @/lib/number-utils
+
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -87,211 +88,7 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
   )
 
   const calculateCustomerDebts = (customerId: string) => {
-    const cashDebts: { [currencyId: string]: number } = {}
-    const productDebts: { [key: string]: number } = {}
-
-    // محاسبه بدهی‌ها فقط از subdocuments (نه main documents)
-    data.transactions.forEach((transaction) => {
-      // Skip main documents - فقط subdocuments را حساب کن
-      if (transaction.isMainDocument) return
-
-      // برای Inventory (انبار): همه تراکنش‌های product_in و product_out را محاسبه کن
-      if (customerId === "default-warehouse") {
-        if ((transaction.type === "product_in" || transaction.type === "income") && transaction.productTypeId) {
-          let amount = transaction.quantity || transaction.weight || 0
-          if (transaction.weight) {
-            switch (transaction.weightUnit) {
-              case "mg": amount /= 1_000_000_000; break;
-              case "g": amount /= 1_000_000; break;
-              case "kg": amount /= 1_000; break;
-              case "lb": amount /= 2204.62; break;
-            }
-          }
-          // کالا به انبار رسید
-          productDebts[transaction.productTypeId] =
-            (productDebts[transaction.productTypeId] || 0) + amount
-        } else if ((transaction.type === "product_out" || transaction.type === "expense") && transaction.productTypeId) {
-          let amount = transaction.quantity || transaction.weight || 0
-          if (transaction.weight) {
-            switch (transaction.weightUnit) {
-              case "mg": amount /= 1_000_000_000; break;
-              case "g": amount /= 1_000_000; break;
-              case "kg": amount /= 1_000; break;
-              case "lb": amount /= 2204.62; break;
-            }
-          }
-          // کالا از انبار خارج شد
-          productDebts[transaction.productTypeId] =
-            (productDebts[transaction.productTypeId] || 0) - amount
-        }
-        return // Skip rest of processing for inventory
-      }
-
-      // پردازش تراکنش‌ها: شامل تراکنش‌هایی که customerId یا accountId برابر است
-      // برای صندوق/بانک، باید accountId را هم بررسی کنیم
-      const isRelevantTransaction =
-        transaction.customerId === customerId ||
-        transaction.accountId === customerId
-
-      if (isRelevantTransaction) {
-        // Debug log for bank accounts
-        if (customerId.includes("bank") || customerId === "default-cash-safe") {
-          console.log("Found transaction for account:", customerId, transaction)
-        }
-
-        const currencyId = transaction.currencyId || "default" // ارز پیش‌فرض اگر نبود
-        const currentDebt = cashDebts[currencyId] || 0
-
-        switch (transaction.type) {
-          case "product_purchase":
-            if (transaction.customerId === customerId) {
-              if (transaction.productTypeId) {
-                let amount = transaction.quantity || transaction.weight || 0
-                if (transaction.weight) {
-                  switch (transaction.weightUnit) {
-                    case "mg": amount /= 1_000_000_000; break;
-                    case "g": amount /= 1_000_000; break;
-                    case "kg": amount /= 1_000; break;
-                    case "lb": amount /= 2204.62; break;
-                  }
-                }
-                // خرید کالا: کالا دریافت کردیم -> مشتری بستانکار کالا (منفی)
-                productDebts[transaction.productTypeId] =
-                  (productDebts[transaction.productTypeId] || 0) - amount
-              }
-              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
-            }
-            break
-          case "product_sale":
-            if (transaction.customerId === customerId) {
-              if (transaction.productTypeId) {
-                let amount = transaction.quantity || transaction.weight || 0
-                if (transaction.weight) {
-                  switch (transaction.weightUnit) {
-                    case "mg": amount /= 1_000_000_000; break;
-                    case "g": amount /= 1_000_000; break;
-                    case "kg": amount /= 1_000; break;
-                    case "lb": amount /= 2204.62; break;
-                  }
-                }
-                // فروش کالا: کالا دادیم -> مشتری بدهکار کالا (مثبت)
-                productDebts[transaction.productTypeId] =
-                  (productDebts[transaction.productTypeId] || 0) + amount
-              }
-              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
-            }
-            break
-          case "product_in":
-            if (transaction.customerId === customerId && transaction.productTypeId) {
-              let amount = transaction.quantity || transaction.weight || 0
-              if (transaction.weight) {
-                switch (transaction.weightUnit) {
-                  case "mg": amount /= 1_000_000_000; break;
-                  case "g": amount /= 1_000_000; break;
-                  case "kg": amount /= 1_000; break;
-                  case "lb": amount /= 2204.62; break;
-                }
-              }
-              // مشتری کالا داد → طلبکار است (منفی) - قرمز نمایش داده می‌شود
-              productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) - amount
-            }
-            // product_in فقط کالا را منتقل می‌کند، نه پول
-            break
-          case "product_out":
-            if (transaction.customerId === customerId && transaction.productTypeId) {
-              let amount = transaction.quantity || transaction.weight || 0
-              if (transaction.weight) {
-                switch (transaction.weightUnit) {
-                  case "mg": amount /= 1_000_000_000; break;
-                  case "g": amount /= 1_000_000; break;
-                  case "kg": amount /= 1_000; break;
-                  case "lb": amount /= 2204.62; break;
-                }
-              }
-              // مشتری کالا گرفت → بدهکار است (مثبت) - سبز نمایش داده می‌شود
-              productDebts[transaction.productTypeId] =
-                (productDebts[transaction.productTypeId] || 0) + amount
-            }
-            break
-          case "cash_in": // ورود وجه
-            // برای مشتری: بدهی کم می‌شود (پرداخت کرده)
-            if (customerId === transaction.customerId) {
-              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
-            }
-            // برای صندوق/بانک: موجودی زیاد می‌شود (دریافت کرده)
-            if (transaction.accountId === customerId) {
-              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
-            }
-            break
-          case "cash_out": // خروج وجه
-            // برای مشتری: بدهی زیاد می‌شود (دریافت کرده)
-            if (customerId === transaction.customerId) {
-              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
-            }
-            // برای صندوق/بانک: موجودی کم می‌شود (پرداخت کرده)
-            if (transaction.accountId === customerId) {
-              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
-            }
-            break
-          case "expense":
-            // هزینه: فقط برای صندوق/بانک (accountId) موجودی کم می‌شود
-            if (transaction.accountId === customerId) {
-              cashDebts[currencyId] = currentDebt - (transaction.amount || 0)
-            }
-            break
-          case "income":
-            // درآمد: فقط برای صندوق/بانک (accountId) موجودی زیاد می‌شود
-            if (transaction.accountId === customerId) {
-              cashDebts[currencyId] = currentDebt + (transaction.amount || 0)
-            }
-            break
-          case "receivable":
-            if (transaction.customerId === customerId) {
-              // طلب: بدهی مشتری زیاد می‌شود (مثبت)
-              if (transaction.productTypeId && (transaction.quantity || transaction.weight)) {
-                let amount = transaction.quantity || transaction.weight || 0
-                if (transaction.weight) {
-                  switch (transaction.weightUnit) {
-                    case "mg": amount /= 1_000_000_000; break;
-                    case "g": amount /= 1_000_000; break;
-                    case "kg": amount /= 1_000; break;
-                    case "lb": amount /= 2204.62; break;
-                  }
-                }
-                productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
-              }
-              if (transaction.amount) {
-                cashDebts[currencyId] = currentDebt + transaction.amount
-              }
-            }
-            break
-          case "payable":
-            if (transaction.customerId === customerId) {
-              // بدهی: بدهی مشتری کم می‌شود (منفی)
-              // چون مقدار در دیتابیس منفی ذخیره شده، باید آن را جمع کنیم
-              if (transaction.productTypeId && (transaction.quantity || transaction.weight)) {
-                let amount = transaction.quantity || transaction.weight || 0
-                if (transaction.weight) {
-                  switch (transaction.weightUnit) {
-                    case "mg": amount /= 1_000_000_000; break;
-                    case "g": amount /= 1_000_000; break;
-                    case "kg": amount /= 1_000; break;
-                    case "lb": amount /= 2204.62; break;
-                  }
-                }
-                productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
-              }
-              if (transaction.amount) {
-                cashDebts[currencyId] = currentDebt + transaction.amount
-              }
-            }
-            break
-        }
-      }
-    })
-
-    return { cashDebts, productDebts }
+    return calculateCustomerBalance(customerId, data.transactions, data.settings?.baseWeightUnit)
   }
 
   const customersWithDebts = data.customers.map((customer) => {

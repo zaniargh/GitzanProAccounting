@@ -171,7 +171,7 @@
   "selectWeightUnit": "انتخاب واحد وزن",
   "weightUnit_mg": "میلی‌گرم",
   "weightUnit_g": "گرم",
-  "weightUnit_kg": "کیلوگرم",
+  "weightUnit_kg": "kg",
   "weightUnit_ton": "تن",
   "weightUnit_lb": "پوند",
   "deleteConfirmation": "آیا از حذف این مورد اطمینان دارید؟",
@@ -265,5 +265,12 @@
   "accountant2PhoneLabel": "تلفن حسابدار ۲",
   "emailLabel": "ایمیل",
   "saveSettings": "ذخیره تنظیمات",
-  "settingsSaved": "تنظیمات با موفقیت ذخیره شد!"
+  "settingsSaved": "تنظیمات با موفقیت ذخیره شد!",
+  "extraTransactionsTitle": "معاملات جدید",
+  "debt": "بدهی",
+  "deduction": "کم کردن",
+  "remainingDebt": "مانده بدهی",
+  "submitExtraTransactions": "ثبت معاملات جدید",
+  "extraTransactionsList": "لیست معاملات جدید",
+  "blankPrint": "چاپ خالی"
 }

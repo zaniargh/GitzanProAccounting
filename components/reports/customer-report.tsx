@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import type { AppData, ProductType } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
+import { formatNumber } from "@/lib/number-utils"
 
 interface CustomerReportProps {
   data: AppData
@@ -31,9 +32,16 @@ export function CustomerReport({ data }: CustomerReportProps) {
     let totalProductSale = 0
     let totalAmount = 0
 
+    // New total accumulators
+    let goodsIn = 0
+    let goodsOut = 0
+    let moneyReceivable = 0
+    let moneyPayable = 0
+
     customerTransactions.forEach((t) => {
       totalAmount += t.amount || 0
 
+      // Standard totals (existing logic)
       switch (t.type) {
         case "cash_in":
           cashIn += t.amount || 0
@@ -54,6 +62,28 @@ export function CustomerReport({ data }: CustomerReportProps) {
           totalProductSale += t.weight || 0
           break
       }
+
+      // New requested totals (excluding expense and income)
+      if (t.type !== "expense" && t.type !== "income") {
+        switch (t.type) {
+          case "product_in":
+          case "product_purchase":
+            goodsIn += t.weight || 0
+            break
+          case "product_out":
+          case "product_sale":
+            goodsOut += t.weight || 0
+            break
+          case "cash_in":
+          case "receivable":
+            moneyReceivable += t.amount || 0
+            break
+          case "cash_out":
+          case "payable":
+            moneyPayable += t.amount || 0
+            break
+        }
+      }
     })
 
     return {
@@ -64,10 +94,61 @@ export function CustomerReport({ data }: CustomerReportProps) {
       totalProductPurchase,
       totalProductSale,
       netCash: cashIn - cashOut,
-      netProduct: totalProductIn + totalProductPurchase - totalProductOut - totalProductSale,
+      netProduct: totalProductIn + totalProductSale - totalProductOut - totalProductPurchase,
       totalTransactions: customerTransactions.length,
       totalAmount,
+      // New totals
+      goodsIn,
+      goodsOut,
+      moneyReceivable,
+      moneyPayable
     }
+  }, [customerTransactions])
+
+  // New calculation based on specific user formulas
+  const userTotals = useMemo(() => {
+    let goods_in = 0
+    let goods_payable = 0
+    let goods_out = 0
+    let goods_receivable = 0
+
+    let money_in = 0
+    let money_payable = 0
+    let money_out = 0
+    let money_receivable = 0
+
+    customerTransactions.forEach(t => {
+      if (t.type === 'expense' || t.type === 'income') return;
+
+      // Goods Mapping
+      if (t.type === 'product_in') goods_in += t.weight || 0;
+      if (t.type === 'product_purchase') goods_receivable += t.weight || 0;
+
+      if (t.type === 'product_out') goods_out += t.weight || 0;
+      if (t.type === 'product_sale') goods_payable += t.weight || 0;
+
+      // Money Mapping
+      if (t.type === 'cash_in') money_in += t.amount || 0;
+
+      // Money Payable includes straightforward 'payable' AND the money owed from purchase
+      if (t.type === 'payable' || t.type === 'product_purchase') money_payable += t.amount || 0;
+
+      if (t.type === 'cash_out') money_out += t.amount || 0;
+
+      // Money Receivable includes straightforward 'receivable' AND money to be received from sale
+      if (t.type === 'receivable' || t.type === 'product_sale') money_receivable += t.amount || 0;
+    });
+
+    // Formula: (Goods In + Goods Payable) - (Goods Out + Goods Receivable)
+    const netGoods = (goods_in + goods_payable) - (goods_out + goods_receivable);
+
+    // Formula: (Money In + Money Payable) - (Money Out + Money Receivable)
+    const netMoney = (money_in + money_payable) - (money_out + money_receivable);
+
+    return {
+      netGoods, netMoney,
+      components: { goods_in, goods_payable, goods_out, goods_receivable, money_in, money_payable, money_out, money_receivable }
+    };
   }, [customerTransactions])
 
   const getCustomerName = (customerId: string) => {
@@ -95,9 +176,7 @@ export function CustomerReport({ data }: CustomerReportProps) {
     return found?.name || "نامشخص"
   }
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat("fa-IR").format(num)
-  }
+  // formatNumber imported from @/lib/number-utils
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("fa-IR")
@@ -117,6 +196,10 @@ export function CustomerReport({ data }: CustomerReportProps) {
         return "ورود وجه"
       case "cash_out":
         return "خروج وجه"
+      case "receivable":
+        return "طلب"
+      case "payable":
+        return "بدهی"
       default:
         return type
     }
@@ -136,6 +219,10 @@ export function CustomerReport({ data }: CustomerReportProps) {
         return "bg-blue-100 text-blue-800"
       case "cash_out":
         return "bg-orange-100 text-orange-800"
+      case "receivable":
+        return "bg-emerald-100 text-emerald-800"
+      case "payable":
+        return "bg-rose-100 text-rose-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -162,6 +249,33 @@ export function CustomerReport({ data }: CustomerReportProps) {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="p-4 bg-blue-50 border-blue-200">
+          <h3 className="font-semibold mb-2 text-blue-800">Net Goods (خالص کالا)</h3>
+          <div className="flex justify-between items-end">
+            <div className="text-sm text-blue-600 space-y-1">
+              <div dir="ltr">In + Payable: {formatNumber(userTotals.components.goods_in + userTotals.components.goods_payable)}</div>
+              <div dir="ltr">Out + Receivable: {formatNumber(userTotals.components.goods_out + userTotals.components.goods_receivable)}</div>
+            </div>
+            <p className={`text-2xl font-bold ${userTotals.netGoods >= 0 ? "text-blue-700" : "text-red-700"}`}>
+              {formatNumber(userTotals.netGoods)} تن
+            </p>
+          </div>
+        </Card>
+        <Card className="p-4 bg-emerald-50 border-emerald-200">
+          <h3 className="font-semibold mb-2 text-emerald-800">Net Money (خالص حساب)</h3>
+          <div className="flex justify-between items-end">
+            <div className="text-sm text-emerald-600 space-y-1">
+              <div dir="ltr">In + Payable: {formatNumber(userTotals.components.money_in + userTotals.components.money_payable)}</div>
+              <div dir="ltr">Out + Receivable: {formatNumber(userTotals.components.money_out + userTotals.components.money_receivable)}</div>
+            </div>
+            <p className={`text-2xl font-bold ${userTotals.netMoney >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+              {formatNumber(userTotals.netMoney)} دلار
+            </p>
+          </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -207,6 +321,7 @@ export function CustomerReport({ data }: CustomerReportProps) {
         </Card>
       </div>
 
+
       <Card>
         <div className="p-4 border-b">
           <h3 className="font-semibold">تراکنش‌های اخیر</h3>
@@ -247,6 +362,6 @@ export function CustomerReport({ data }: CustomerReportProps) {
           </div>
         )}
       </Card>
-    </div>
+    </div >
   )
 }

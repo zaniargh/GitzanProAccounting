@@ -22,6 +22,7 @@ import type { ProductType } from "@/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2 } from "lucide-react"
 import { useLang } from "@/components/language-provider"
+import { formatNumber } from "@/lib/number-utils"
 
 export default function HomePage() {
   const { data, saveData, isLoading } = useLocalStorage()
@@ -235,12 +236,12 @@ export default function HomePage() {
               <Card className="p-3 md:p-4 hover:shadow-lg transition-shadow">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("totalCashBalanceUSD")}</h3>
                 <p className={`text-2xl md:text-3xl font-bold ${cashBalanceUSD >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${Math.abs(cashBalanceUSD).toLocaleString()}
+                  ${formatNumber(Math.abs(cashBalanceUSD))}
                 </p>
               </Card>
               <Card className="p-4 md:p-6 hover:shadow-lg transition-shadow">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("totalProductInventory")}</h3>
-                <p className="text-2xl md:text-3xl font-bold text-primary">{totalProductInventory.toLocaleString()}</p>
+                <p className="text-2xl md:text-3xl font-bold text-primary">{formatNumber(totalProductInventory)}</p>
               </Card>
               <Card className="p-4 md:p-6 hover:shadow-lg transition-shadow">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">{t("activeCustomers")}</h3>
@@ -255,7 +256,7 @@ export default function HomePage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">{t("cashUSD")}</span>
-                    <span className="text-xl font-bold text-green-600">${receivableUSD.toLocaleString()}</span>
+                    <span className="text-xl font-bold text-green-600">${formatNumber(receivableUSD)}</span>
                   </div>
                 </div>
               </Card>
@@ -264,7 +265,7 @@ export default function HomePage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">{t("cashUSD")}</span>
-                    <span className="text-xl font-bold text-red-600">${payableUSD.toLocaleString()}</span>
+                    <span className="text-xl font-bold text-red-600">${formatNumber(payableUSD)}</span>
                   </div>
                 </div>
               </Card>
@@ -278,7 +279,7 @@ export default function HomePage() {
                   <div key={id} className="space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium">{name}</span>
-                      <span className="text-muted-foreground">{total.toFixed(2)} {t("tons")}</span>
+                      <span className="text-muted-foreground">{formatNumber(total)} {t("tons")}</span>
                     </div>
                     <div className="w-full bg-muted rounded-full h-2">
                       <div
@@ -299,7 +300,7 @@ export default function HomePage() {
                   {topDebtors.length > 0 ? topDebtors.map(c => (
                     <div key={c.id} className="flex justify-between items-center py-2 border-b last:border-0">
                       <span className="font-medium truncate">{c.name}</span>
-                      <span className="text-red-600 font-semibold shrink-0">${c.cashDebt.toLocaleString()}</span>
+                      <span className="text-red-600 font-semibold shrink-0">${formatNumber(c.cashDebt)}</span>
                     </div>
                   )) : <p className="text-muted-foreground text-sm">No debtors</p>}
                 </div>
@@ -310,7 +311,7 @@ export default function HomePage() {
                   {topCreditors.length > 0 ? topCreditors.map(c => (
                     <div key={c.id} className="flex justify-between items-center py-2 border-b last:border-0">
                       <span className="font-medium truncate">{c.name}</span>
-                      <span className="text-green-600 font-semibold shrink-0">${Math.abs(c.cashDebt).toLocaleString()}</span>
+                      <span className="text-green-600 font-semibold shrink-0">${formatNumber(Math.abs(c.cashDebt))}</span>
                     </div>
                   )) : <p className="text-muted-foreground text-sm">No creditors</p>}
                 </div>
@@ -331,7 +332,7 @@ export default function HomePage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-semibold">
-                          {(t.amount || 0).toLocaleString()} {data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}
+                          {formatNumber(t.amount || 0)} {data.currencies?.find(c => c.id === t.currencyId)?.symbol || "$"}
                         </p>
                         <p className="text-xs text-muted-foreground capitalize">{t.type.replace('_', ' ')}</p>
                       </div>

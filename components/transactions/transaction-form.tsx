@@ -21,6 +21,8 @@ import { TransactionList } from "./transaction-list"
 import { useLang } from "@/components/language-provider"
 import { formatBothDatesWithTime } from "@/lib/date-utils"
 import { buildTemporaryDocsHTML } from "@/components/print/build-temporary-docs-html"
+import { formatNumber } from "@/lib/number-utils"
+import { calculateCustomerBalance } from "@/lib/balance-utils"
 
 interface TransactionFormProps {
   data: AppData
@@ -183,6 +185,9 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
 
   const customerBalance = useMemo(() => {
     if (!formData.customerId) return null;
+    return calculateCustomerBalance(formData.customerId, data.transactions, data.settings?.baseWeightUnit);
+    /* 
+    if (!formData.customerId) return null;
 
     const cashDebts: { [currencyId: string]: number } = {}
     const productDebts: { [key: string]: number } = {}
@@ -249,12 +254,12 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
             break
           case "product_in":
             if (transaction.customerId === customerId && transaction.productTypeId) {
-              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
+              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
             }
             break
           case "product_out":
             if (transaction.customerId === customerId && transaction.productTypeId) {
-              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+              productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
             }
             break
           case "cash_in":
@@ -273,7 +278,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
             break
           case "receivable":
             if (transaction.customerId === customerId) {
-              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) + amount
+              if (transaction.productTypeId) productDebts[transaction.productTypeId] = (productDebts[transaction.productTypeId] || 0) - amount
               if (transaction.amount) cashDebts[currencyId] = currentDebt + transaction.amount
             }
             break
@@ -318,7 +323,8 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
       }
     })
     return { cashDebts, productDebts }
-  }, [data.transactions, formData.customerId, formData.accountId])
+    */
+  }, [formData.customerId, data.transactions, data.settings?.baseWeightUnit])
 
   const handleEdit = (transaction: Transaction) => {
     // اگر سند اصلی است، همه زیرسندها را به موقت ببر
@@ -1218,7 +1224,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                   const isReceivable = amount > 0;
                   return (
                     <div key={currId} className="flex items-center gap-1 font-medium">
-                      <span>{formatNumberWithCommas(Math.abs(amount).toFixed(0))}</span>
+                      <span>{formatNumber(Math.abs(amount))}</span>
                       <span className="text-muted-foreground">{curr?.symbol || ""}</span>
                       <span className={isReceivable ? "text-green-600" : "text-red-600"}>
                         {isReceivable ? t("receivable") : t("payable")}
@@ -1233,7 +1239,7 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                   const isReceivable = amount > 0;
                   return (
                     <div key={pId} className="flex items-center gap-1 font-medium">
-                      <span>{formatNumberWithCommas(Math.abs(amount).toFixed(3))}</span>
+                      <span>{formatNumber(Math.abs(amount))}</span>
                       <span className="text-muted-foreground">{prodToken?.name || ""}</span>
                       <span className={isReceivable ? "text-green-600" : "text-red-600"}>
                         {isReceivable ? t("receivable") : t("payable")}
@@ -1788,7 +1794,6 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                       {temporaryTransactions.map((tx) => {
                         if (tx.parentDocumentId) return null; // Filter out sub-documents from UI
                         const typeInfo = transactionTypes.find(t => t.value === tx.type)
-                        const formatNumber = (num: number) => new Intl.NumberFormat("en-US").format(num)
 
                         // Get color class based on transaction type (not just amount sign)
                         const getAmountClass = () => {
@@ -2459,17 +2464,17 @@ export function TransactionForm({ data, onDataChange, productTypes = [] }: Trans
                         // Determine sign based on transaction type (User Formula: Out+Rec - In-Pay)
                         let sign = 0;
                         switch (tx.type) {
-                          // Positive Group (Add): Goods Out + Goods Receivable
-                          case "product_purchase": // User: Purchase = Customer Debtor (Positive)
-                          case "product_out":
-                          case "receivable":
+                          // Positive Group (Add): Goods In + Goods Payable
+                          case "product_sale": // Payable -> Positive
+                          case "product_in":   // In -> Positive
+                          case "payable":      // Payable -> Positive
                             sign = 1;
                             break;
 
-                          // Negative Group (Subtract): Goods In + Goods Payable
-                          case "product_sale": // User: Sale = Customer Creditor (Negative)
-                          case "product_in":
-                          case "payable":
+                          // Negative Group (Subtract): Goods Out + Goods Receivable
+                          case "product_purchase": // Receivable -> Negative
+                          case "product_out":      // Out -> Negative
+                          case "receivable":       // Receivable -> Negative
                             sign = -1;
                             break;
 
