@@ -1,5 +1,5 @@
 
-import { Transaction, CompanyInfo } from "@/types"
+import { Transaction, CompanyInfo, Currency } from "@/types"
 import { formatNumber } from "@/lib/number-utils"
 
 export interface PrintColumnConfig {
@@ -36,8 +36,9 @@ export const buildRegisteredDocsHTML = (
     moneyOut?: string
     moneyReceivable?: string
     moneyPayable?: string
-  } | null
-
+  } | null,
+  currencies?: Currency[],
+  baseCurrencyId?: string
 ) => {
   const isRtl = lang === "fa"
   const title = lang === "fa" ? "لیست اسناد ثبت شده" : "Registered Documents List"
@@ -115,33 +116,44 @@ export const buildRegisteredDocsHTML = (
     const goodsAmount = t.quantity || t.weight
     const totals = getDocTotals ? getDocTotals(t.id) : null
 
-    if (columns.goodsIn) row += `<td>${totals?.goodsIn || (isGoodsIn ? safeFormat(goodsAmount) : "-")}</td>`
-    if (columns.goodsOut) row += `<td>${totals?.goodsOut || (isGoodsOut ? safeFormat(goodsAmount) : "-")}</td>`
-    if (columns.goodsReceivable) row += `<td>${totals?.goodsReceivable || (isPurchase || isRecGoods ? safeFormat(goodsAmount) : "-")}</td>`
-    if (columns.goodsPayable) row += `<td>${totals?.goodsPayable || (isSale || isPayGoods ? safeFormat(goodsAmount) : "-")}</td>`
+    // Helper for formatting
+    const colorClass = (isGreen: boolean, isRed: boolean) => isGreen ? "text-green-600" : (isRed ? "text-red-600" : "")
+
+    // Goods Logic
+    // ... (keep existing calculates)
+
+    const getGoodsLabel = (val: number) => {
+      // Naive unit guess
+      if (t.quantity) return `${formatNumber(val)} (Cnt)`
+      return `${formatNumber(val)} ${t.weightUnit || "ton"}`
+    }
+
+    const fmtGoods = (val: number | undefined, isGreen: boolean, isRed: boolean) => {
+      if (val === undefined) return "-"
+      return `<span class="${colorClass(isGreen, isRed)}">${getGoodsLabel(val)}</span>`
+    }
+
+    if (columns.goodsIn) row += `<td>${totals?.goodsIn || (isGoodsIn ? fmtGoods(goodsAmount, true, false) : "-")}</td>`
+    if (columns.goodsOut) row += `<td>${totals?.goodsOut || (isGoodsOut ? fmtGoods(goodsAmount, false, true) : "-")}</td>`
+    if (columns.goodsReceivable) row += `<td>${totals?.goodsReceivable || (isPurchase || isRecGoods ? fmtGoods(goodsAmount, true, false) : "-")}</td>`
+    if (columns.goodsPayable) row += `<td>${totals?.goodsPayable || (isSale || isPayGoods ? fmtGoods(goodsAmount, false, true) : "-")}</td>`
 
     // Money Logic
     const isMoneyIn = t.type === "cash_in" || t.type === "income"
     const isMoneyOut = t.type === "cash_out" || t.type === "expense"
-    // Sale -> Money In? NO, Sale tracks Money Receivable/Payable in Money columns?
-    // In TransactionList:
-    // Money In/Out are for Cash transactions.
-    // Money Receivable/Payable are for Credit transactions (Sale/Purchase).
-    // Purchase -> Money Payable. Sale -> Money Receivable.
     const isMoneyRec = (t.type === "product_sale" || (t.type === "receivable" && t.amount))
     const isMoneyPay = (t.type === "product_purchase" || (t.type === "payable" && t.amount))
 
-    // Actually TransactionList logic is slightly more complex with "hasAmount" checks, 
-    // but effectively:
-    // In: cash_in, income
-    // Out: cash_out, expense
-    // Rec: product_sale, receivable(amount)
-    // Pay: product_purchase, payable(amount)
+    const symbol = currencies?.find(c => c.id === (t.currencyId || baseCurrencyId))?.symbol || "$"
+    const fmtMoney = (val: number | undefined, isGreen: boolean, isRed: boolean) => {
+      if (val === undefined) return "-"
+      return `<span class="${colorClass(isGreen, isRed)}">${formatNumber(val)} ${symbol}</span>`
+    }
 
-    if (columns.moneyIn) row += `<td>${totals?.moneyIn || (isMoneyIn ? safeFormat(t.amount) : "-")}</td>`
-    if (columns.moneyOut) row += `<td>${totals?.moneyOut || (isMoneyOut ? safeFormat(t.amount) : "-")}</td>`
-    if (columns.moneyReceivable) row += `<td>${totals?.moneyReceivable || (isMoneyRec ? safeFormat(t.amount) : "-")}</td>`
-    if (columns.moneyPayable) row += `<td>${totals?.moneyPayable || (isMoneyPay ? safeFormat(t.amount) : "-")}</td>`
+    if (columns.moneyIn) row += `<td>${totals?.moneyIn || (isMoneyIn ? fmtMoney(t.amount, true, false) : "-")}</td>`
+    if (columns.moneyOut) row += `<td>${totals?.moneyOut || (isMoneyOut ? fmtMoney(t.amount, false, true) : "-")}</td>`
+    if (columns.moneyReceivable) row += `<td>${totals?.moneyReceivable || (isMoneyRec ? fmtMoney(t.amount, true, false) : "-")}</td>`
+    if (columns.moneyPayable) row += `<td>${totals?.moneyPayable || (isMoneyPay ? fmtMoney(t.amount, false, true) : "-")}</td>`
 
 
     if (columns.date) {
@@ -170,10 +182,16 @@ export const buildRegisteredDocsHTML = (
         .header h1 { margin: 0; font-size: 18px; }
         .header p { margin: 5px 0; color: #666; }
         .badge { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        
+        .text-green-600 { color: #16a34a; }
+        .text-red-600 { color: #dc2626; }
+        
         @media print {
           .no-print { display: none; }
           body { padding: 0; }
           table { font-size: 10px; }
+          .text-green-600 { color: #16a34a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .text-red-600 { color: #dc2626 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       </style>
     </head>

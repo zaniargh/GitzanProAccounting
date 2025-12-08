@@ -230,7 +230,10 @@ export function TransactionList({ data, onDataChange, onEdit }: TransactionListP
       lang,
       getPrintProductTypeName,
       getPrintCustomerName,
-      getDocTotalsAdapter
+      getDocTotalsAdapter,
+      data.currencies,
+      data.settings?.baseCurrencyId
+
     )
 
     printWindow.document.write(html)

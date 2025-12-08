@@ -20,12 +20,13 @@ import { calculateCustomerBalance } from "@/lib/balance-utils"
 interface CustomerListProps {
   data: AppData
   onDataChange: (data: AppData) => void
+  onViewHistory?: (customerId: string) => void
 }
 
 type SortField = "name" | "phone" | "group" | "cashDebts" | "productDebts"
 type SortDirection = "asc" | "desc"
 
-export function CustomerList({ data, onDataChange }: CustomerListProps) {
+export function CustomerList({ data, onDataChange, onViewHistory }: CustomerListProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [formData, setFormData] = useState({ name: "", phone: "", groupId: "", customerCode: "" })
@@ -658,7 +659,12 @@ export function CustomerList({ data, onDataChange }: CustomerListProps) {
                     </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        {getDisplayName(customer)}
+                        <span
+                          className="cursor-pointer hover:underline text-primary"
+                          onClick={() => onViewHistory?.(customer.id)}
+                        >
+                          {getDisplayName(customer)}
+                        </span>
                         {customer.isProtected && (
                           <div title="مشتری محافظت شده - غیرقابل حذف">
                             <Shield className="h-4 w-4 text-orange-600" />

@@ -11,9 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Printer, Download, Edit, Trash2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { formatPersianDate, formatGregorianDate } from "@/lib/date-utils"
+import { useLang } from "@/components/language-provider"
 import type { Transaction, Customer, CustomerGroup, ProductType, Currency, BankAccount } from "@/types"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
 import { formatNumber } from "@/lib/number-utils"
+
 const getAmountClass = (type: string) => {
   // نوع‌هایی که باید سبز باشند
   const green = new Set([
@@ -36,6 +38,7 @@ const getAmountClass = (type: string) => {
   if (red.has(type)) return "text-red-600"
   return "" // پیش‌فرض
 }
+
 type RunningBalance = {
   dollar: number
   productWeight: number // وزن خالص محصول
@@ -93,39 +96,41 @@ interface DocumentsListProps {
   }
   onDataChange: (data: any) => void
   onEdit?: (transaction: Transaction) => void
+  initialFilter?: { customerId?: string } | null
+  onFilterClear?: () => void
 }
 
-export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps) {
+export function DocumentsList({ data, onDataChange, onEdit, initialFilter, onFilterClear }: DocumentsListProps) {
+  const { t, lang } = useLang()
   const [productTypes] = useLocalStorageGeneric<ProductType[]>("productTypes", [])
 
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState("")
   const [selectedGroup, setSelectedGroup] = useState("")
-  const [showLast25Only, setShowLast25Only] = useState(false)
+  const [showLast25Only, setShowLast25Only] = useState(true)
   const [filterProductType, setFilterProductType] = useState("all")
-  const [documentType, setDocumentType] = useState<"all" | "main" | "sub">("all") // فیلتر نوع سند
+  const [documentType, setDocumentType] = useState<"all" | "main" | "sub">("sub") // فیلتر نوع سند
   const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>([]) // فیلتر ارزها - خالی یعنی همه
 
   const [sortField, setSortField] = useState<string>("")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 
+  // Apply initial filter
+  useEffect(() => {
+    if (initialFilter?.customerId) {
+      setSelectedCustomer(initialFilter.customerId)
+      // Optional: clear dates/other filters if desired when coming from customer list
+      setDateFrom("")
+      setDateTo("")
+      // Notify parent we consumed the filter
+      if (onFilterClear) onFilterClear()
+    }
+  }, [initialFilter, onFilterClear])
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(25)
-  // Badge برای نمایش بد/بس بر اساس علامت
-  const debtBadge = (val: number) => {
-    if (val > 0) {
-      // مشتری بدهکارِ ماست → "بد" (سبز)
-      return <span className="px-1 py-0 rounded-full bg-green-100 text-green-700 text-[9px]">بد</span>
-    }
-    if (val < 0) {
-      // ما بدهکار مشتری‌ایم → "بس" (قرمز)
-      return <span className="px-1 py-0 rounded-full bg-red-100 text-red-700 text-[9px]">بس</span>
-    }
-    // صفر
-    return null
-  }
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -149,9 +154,27 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     </TableHead>
   )
 
-  const getCustomerName = (customerId: string) => {
-    return data.customers.find((c) => c.id === customerId)?.name || "نامشخص"
+
+  // Badge برای نمایش بد/بس بر اساس علامت
+  const debtBadge = (val: number) => {
+    if (val > 0) {
+      // مشتری بدهکارِ ماست → "بد" (سبز)
+      return <span className="px-1 py-0 rounded-full bg-green-100 text-green-700 text-[9px]">{t("debtor")}</span>
+    }
+    if (val < 0) {
+      // ما بدهکار مشتری‌ایم → "بس" (قرمز)
+      return <span className="px-1 py-0 rounded-full bg-red-100 text-red-700 text-[9px]">{t("creditor")}</span>
+    }
+    // صفر
+    return null
   }
+
+  // ...
+
+  const getCustomerName = (customerId: string) => {
+    return data.customers.find((c) => c.id === customerId)?.name || t("unknown")
+  }
+
   const getUnitPrice = (t: Transaction) => {
     if (t.unitPrice != null) return t.unitPrice
     if (t.amount != null && t.weight) {
@@ -161,32 +184,34 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     return undefined
   }
 
+  // ...
 
   const getProductTypeName = (productTypeId?: string) => {
     if (!productTypeId) return "-"
     if (!productTypes || !Array.isArray(productTypes)) {
-      return "نامشخص"
+      return t("unknown")
     }
 
     const found = productTypes.find((f) => f.id === productTypeId)
-    return found?.name || "نامشخص"
+    return found?.name || t("unknown")
   }
 
   const getTransactionTypeLabel = (type: string) => {
     const types = {
-      product_purchase: "خرید محصول",
-      product_sale: "فروش محصول",
-      product_in: "ورود محصول",
-      product_out: "خروج محصول",
-      cash_in: "هه یه تی دولار",
-      cash_out: "لایه تی دولار",
-      expense: "هزینه",
-      income: "درآمد",
-      receivable: "طلب",
-      payable: "بدهی",
+      product_purchase: t("productPurchase"),
+      product_sale: t("productSale"),
+      product_in: t("productIn"),
+      product_out: t("productOut"),
+      cash_in: t("cashIn"),
+      cash_out: t("cashOut"),
+      expense: t("expense"),
+      income: t("income"),
+      receivable: t("receivable"),
+      payable: t("payable"),
     }
     return types[type as keyof typeof types] || type
   }
+
 
   const formatDate = (dateString: string) => {
     try {
@@ -207,12 +232,12 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
   // محاسبه running balance برای **همه** اسناد (بدون فیلتر) تا ته حساب درست باشه
   const runningBalancesMap = useMemo(() => {
     const balanceMap = new Map<string, {
-      cashBalances: { [currencyId: string]: number }  // تغییر: از cashBalance به cashBalances
-      productBalances: { [key: string]: number }
+      cashBalances: { [currencyId: string]: number }
+      productBalances: { [key: string]: { weight: number, quantity: number } }
     }>()
     const perCustomerBalance = new Map<string, {
-      cashBalances: { [currencyId: string]: number }  // تغییر: از cashBalance به cashBalances
-      productBalances: { [key: string]: number }
+      cashBalances: { [currencyId: string]: number }
+      productBalances: { [key: string]: { weight: number, quantity: number } }
     }>()
 
     // پیدا کردن ارز پایه
@@ -236,27 +261,39 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
         case "product_purchase":
           currentBalance.cashBalances[currencyId] = currentCashBalance - amount
           if (transaction.productTypeId) {
-            currentBalance.productBalances[transaction.productTypeId] =
-              (currentBalance.productBalances[transaction.productTypeId] || 0) + (transaction.weight || 0)
+            const current = currentBalance.productBalances[transaction.productTypeId] || { weight: 0, quantity: 0 }
+            currentBalance.productBalances[transaction.productTypeId] = {
+              weight: current.weight - (transaction.weight || 0),
+              quantity: current.quantity - (transaction.quantity || 0)
+            }
           }
           break
         case "product_sale":
           currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           if (transaction.productTypeId) {
-            currentBalance.productBalances[transaction.productTypeId] =
-              (currentBalance.productBalances[transaction.productTypeId] || 0) - (transaction.weight || 0)
+            const current = currentBalance.productBalances[transaction.productTypeId] || { weight: 0, quantity: 0 }
+            currentBalance.productBalances[transaction.productTypeId] = {
+              weight: current.weight + (transaction.weight || 0),
+              quantity: current.quantity + (transaction.quantity || 0)
+            }
           }
           break
         case "product_in":
           if (transaction.productTypeId) {
-            currentBalance.productBalances[transaction.productTypeId] =
-              (currentBalance.productBalances[transaction.productTypeId] || 0) + (transaction.weight || 0)
+            const current = currentBalance.productBalances[transaction.productTypeId] || { weight: 0, quantity: 0 }
+            currentBalance.productBalances[transaction.productTypeId] = {
+              weight: current.weight - (transaction.weight || 0),
+              quantity: current.quantity - (transaction.quantity || 0)
+            }
           }
           break
         case "product_out":
           if (transaction.productTypeId) {
-            currentBalance.productBalances[transaction.productTypeId] =
-              (currentBalance.productBalances[transaction.productTypeId] || 0) - (transaction.weight || 0)
+            const current = currentBalance.productBalances[transaction.productTypeId] || { weight: 0, quantity: 0 }
+            currentBalance.productBalances[transaction.productTypeId] = {
+              weight: current.weight + (transaction.weight || 0),
+              quantity: current.quantity + (transaction.quantity || 0)
+            }
           }
           break
         case "cash_out":
@@ -265,13 +302,16 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
         case "payable": // Payable is now signed (negative), so we just add it
           currentBalance.cashBalances[currencyId] = currentCashBalance + amount
           if (transaction.productTypeId) {
-            currentBalance.productBalances[transaction.productTypeId] =
-              (currentBalance.productBalances[transaction.productTypeId] || 0) + (transaction.weight || 0)
+            const current = currentBalance.productBalances[transaction.productTypeId] || { weight: 0, quantity: 0 }
+            currentBalance.productBalances[transaction.productTypeId] = {
+              weight: current.weight + (transaction.weight || 0),
+              quantity: current.quantity + (transaction.quantity || 0)
+            }
           }
           break
         case "cash_in":
         case "income":
-          currentBalance.cashBalances[currencyId] = currentCashBalance + amount
+          currentBalance.cashBalances[currencyId] = currentCashBalance - amount
           break
       }
 
@@ -294,7 +334,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     if (documentType === "main") {
       filtered = filtered.filter((t) => t.isMainDocument === true)
     } else if (documentType === "sub") {
-      filtered = filtered.filter((t) => t.parentDocumentId != null)
+      filtered = filtered.filter((t) => !t.isMainDocument)
     }
 
     // اول فیلترهای دیگه رو اعمال می‌کنیم
@@ -398,14 +438,14 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           bValue = Object.values(bBalances)[0] || 0
           break
         case "productBalance":
-          const aProductBalance = a.productTypeId
-            ? runningBalancesMap.get(a.id)?.productBalances[a.productTypeId] || 0
-            : 0
-          const bProductBalance = b.productTypeId
-            ? runningBalancesMap.get(b.id)?.productBalances[b.productTypeId] || 0
-            : 0
-          aValue = aProductBalance
-          bValue = bProductBalance
+          const aBal = a.productTypeId ? runningBalancesMap.get(a.id)?.productBalances[a.productTypeId] : null
+          const bBal = b.productTypeId ? runningBalancesMap.get(b.id)?.productBalances[b.productTypeId] : null
+
+          const aVal = aBal ? (aBal.weight || aBal.quantity || 0) : 0
+          const bVal = bBal ? (bBal.weight || bBal.quantity || 0) : 0
+
+          aValue = aVal
+          bValue = bVal
           break
         default:
           if (sortField.startsWith("balance_")) {
@@ -486,64 +526,88 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     if (!printWindow) return
 
     const rowsHtml = sortedTransactions
-      .map((t) => {
-        const rb = runningBalancesMap.get(t.id)
-        if (!rb) return ""
-        const productVal = t.productTypeId ? (rb.productBalances[t.productTypeId] || 0) : 0
+      .map((tx) => {
+        const rb = runningBalancesMap.get(tx.id) || { cashBalances: {}, productBalances: {} }
+        const mainProductType = tx.productTypeId
+        const productVal = mainProductType ? (rb.productBalances[mainProductType] || { weight: 0, quantity: 0 }) : { weight: 0, quantity: 0 }
 
         // رنگ‌ها برای ستون‌های مبلغ (مثل جدول اصلی)
         const dollarClass =
-          t.type === "cash_out" || t.type === "product_sale" ? "green" :
-            t.type === "cash_in" || t.type === "product_purchase" || t.type === "expense" ? "red" : ""
+          tx.type === "cash_out" || tx.type === "product_sale" ? "green" :
+            tx.type === "cash_in" || tx.type === "product_purchase" || tx.type === "expense" ? "red" : ""
 
 
         // Badge بد/بس
         const badge = (val: number) =>
           val > 0
-            ? '<span class="badge green-badge">لایه تی</span>'
+            ? `<span class="badge green-badge">${t("debtor")}</span>`
             : val < 0
-              ? '<span class="badge red-badge">هه یه تی</span>'
-              : '<span class="badge gray-badge">صفر</span>'
+              ? `<span class="badge red-badge">${t("creditor")}</span>`
+              : `<span class="badge gray-badge">-</span>`
+
+        // Logic for Split Columns
+        const isGoodsIn = ["product_purchase", "product_in"].includes(tx.type)
+        const isGoodsOut = ["product_sale", "product_out"].includes(tx.type)
+        const isDebtor = ["product_sale", "cash_out"].includes(tx.type)
+        const isCreditor = ["product_purchase", "cash_in", "expense"].includes(tx.type)
+
+        // Helper for Goods Display
+        // Helper for Goods Display
+        const formatGoods = (tx: Transaction) => {
+          if (tx.weight) return `${formatNumber(tx.weight)} ${t(tx.weightUnit || "ton")}`
+          if (tx.quantity) return `${formatNumber(tx.quantity)} ${t("count")}`
+          return "-"
+        }
 
         // قیمت واحد (اگه داری)
-        const unit = getUnitPrice(t)
-        const unitCell = unit != null ? `${formatNumber(unit)} دولار/تن` : "-"
+        const unit = getUnitPrice(tx)
+        const unitCell = unit != null ? `${formatNumber(unit)} ${t("dollar")}/${t("ton")}` : "-"
+
+
 
         return `
         <tr>
-          <td>${t.documentNumber || "-"}</td>
-          <td>${getTransactionTypeLabel(t.type)}</td>
-          <td>${getCustomerName(t.customerId)}</td>
-          <td>${getProductTypeName(t.productTypeId)}</td>
-          <td>${t.weight ? formatNumber(t.weight) + " تن" : "-"}</td>
+          <td>${tx.documentNumber || "-"}</td>
+          <td>${getTransactionTypeLabel(tx.type)}</td>
+          <td>${getCustomerName(tx.customerId)}</td>
+          <td>${getProductTypeName(tx.productTypeId)}</td>
+          <td><span class="red">${isGoodsIn ? formatGoods(tx) : "-"}</span></td>
+          <td><span class="green">${isGoodsOut ? formatGoods(tx) : "-"}</span></td>
           <td>${unitCell}</td>
-          <td><span class="${dollarClass}">${formatNumber(t.amount || 0)} دولار</span></td>
-          <td>${formatNumber(rb.cashBalances[t.currencyId || "default"] || 0)} ${badge(rb.cashBalances[t.currencyId || "default"] || 0)}</td>
-          <td>${formatNumber(productVal)} ${badge(productVal)}</td>
+          <td><span class="green">${isDebtor ? formatNumber(tx.amount || 0) : "-"}</span></td>
+          <td><span class="red">${isCreditor ? formatNumber(tx.amount || 0) : "-"}</span></td>
+          <td>${formatNumber(rb.cashBalances[tx.currencyId || "default"] || 0)} ${badge(rb.cashBalances[tx.currencyId || "default"] || 0)}</td>
           <td>
-            <div>${formatDate(t.date)}</div>
-            <div class="subtle small">${formatDateGregorian(t.date)}</div>
+            ${productVal.weight ? formatNumber(productVal.weight) + " " + t(tx.weightUnit || "ton") : ""}
+            ${productVal.weight && productVal.quantity ? " / " : ""}
+            ${productVal.quantity ? formatNumber(productVal.quantity) + " " + t("count") : ""}
+            ${!productVal.weight && !productVal.quantity ? "0" : ""}
+            ${badge(productVal.weight || productVal.quantity || 0)}
           </td>
-          <td>${t.description || "-"}</td>
+          <td>
+            <div>${formatDate(tx.date)}</div>
+            <div class="subtle small">${formatDateGregorian(tx.date)}</div>
+          </td>
+          <td>${tx.description || "-"}</td>
         </tr>
       `
       })
       .join("")
 
     const customerLabel = selectedCustomer
-      ? `مشتری: ${getCustomerName(selectedCustomer)}`
-      : "همهٔ مشتریان"
+      ? `${t("customer")}: ${getCustomerName(selectedCustomer)}`
+      : t("allCustomers")
 
     const rangeLabel = (dateFrom && dateTo)
-      ? `از ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
+      ? `${t("fromDate")} ${formatDate(dateFrom)} ${t("toDate")} ${formatDate(dateTo)}`
       : ""
 
     printWindow.document.write(`
     <!DOCTYPE html>
-    <html dir="rtl" lang="fa">
+    <html dir="${lang === "fa" || (lang as string) === "ku" ? "rtl" : "ltr"}" lang="${lang}">
     <head>
       <meta charset="UTF-8">
-      <title>لیست اسناد و حسابات ادروم</title>
+      <title>${t("printTitle")}</title>
 
       <!-- فونت وزیرمتن (گوگل) + وزیر (jsDelivr) -->
       <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -553,7 +617,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
       <style>
         @page { margin: 5mm; }
-        body { font-family: 'vazirmatn','Vazir', Arial, sans-serif; direction: rtl; }
+        body { font-family: 'vazirmatn','Vazir', Arial, sans-serif; direction: ${lang === "fa" || (lang as string) === "ku" ? "rtl" : "ltr"}; }
         h1 { text-align:center; margin: 0 0 4px; font-weight:700; }
         .meta { text-align:center; color:#374151; font-size:16px; margin-bottom:10px; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -593,27 +657,29 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       </div>
 
       <table>
-        <thead>
-          <tr>
-            <th>ره قم سند</th>
-            <th>نوع</th>
-            <th>مشتری</th>
-            <th>نوع محصول</th>
-            <th>مقدار</th>
-            <th>سعر</th>
-            <th>مبلغ (دلار)</th>
-            <th>آخیر حساب دولار</th>
-            <th>آخیر حساب محصول</th>
-            <th>تاریخ</th>
-            <th>ته بینی</th>
-          </tr>
-        </thead>
+            <thead>
+              <tr>
+                <th style="width:5%">${t("documentNumber")}</th>
+                <th style="width:8%">${t("type")}</th>
+                <th style="width:12%">${t("customer")}</th>
+                <th style="width:8%">${t("productType")}</th>
+                <th style="width:6%">${t("colIn")}</th>
+                <th style="width:6%">${t("colOut")}</th>
+                <th style="width:8%">${t("unitPrice")}</th>
+                <th style="width:8%">${t("debtor")}</th>
+                <th style="width:8%">${t("creditor")}</th>
+                <th style="width:12%">${t("balanceDollar")}</th>
+                <th style="width:12%">${t("balanceProduct")}</th>
+                <th style="width:9%">${t("date")}</th>
+                <th>${t("description")}</th>
+              </tr>
+            </thead>
         <tbody>
           ${rowsHtml}
         </tbody>
       </table>
 
-      <div class="footer">این گزارش توسط سیستم حسابداری زانیار (ادروم) منتشر شده است</div>
+      <div class="footer">${t("reportGeneratedByZanyar")}</div>
     </body>
     </html>
   `)
@@ -632,54 +698,54 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       ? data.customers.find((c) => c.id === selectedCustomer)
       : null
 
-    const customerName = customer ? customer.name : "هەموو کڕیار"
+    const customerName = customer ? customer.name : t("allCustomers")
     const customerPhone = customer?.phone || ""
 
     // پیدا کردن ارز پایه برای تشخیص ستون مبلغ
     const baseCurrencyId = data.currencies?.find(c => c.isBase)?.id || data.currencies?.[0]?.id || "default"
 
     const rowsHtml = sortedTransactions
-      .map((t) => {
-        const balances = runningBalancesMap.get(t.id)?.cashBalances || {}
+      .map((tx) => {
+        const balances = runningBalancesMap.get(tx.id)?.cashBalances || {}
 
         const dollarClass =
-          t.type === "cash_out" || t.type === "product_sale" || t.type === "income" ? "green" :
-            t.type === "cash_in" || t.type === "product_purchase" || t.type === "expense" ? "red" : ""
+          tx.type === "cash_out" || tx.type === "product_sale" || tx.type === "income" ? "green" :
+            tx.type === "cash_in" || tx.type === "product_purchase" || tx.type === "expense" ? "red" : ""
 
         const badge = (val: number) =>
           val > 0
-            ? '<span class="badge green-badge">قەرز</span>'
+            ? `<span class="badge green-badge">${t("debtor")}</span>`
             : val < 0
-              ? '<span class="badge red-badge">بە قەرز</span>'
-              : '<span class="badge gray-badge">سفر</span>'
+              ? `<span class="badge red-badge">${t("creditor")}</span>`
+              : `<span class="badge gray-badge">${t("zero")}</span>`
 
         const kurdishTypes: Record<string, string> = {
-          product_purchase: "کڕینی کاڵا",
-          product_sale: "فرۆشتنی کاڵا",
-          product_in: "هاتنی کاڵا",
-          product_out: "چوونی کاڵا",
-          cash_in: "هاتنی پارە",
-          cash_out: "چوونی پارە",
-          expense: "خەرجی",
-          income: "داهات"
+          product_purchase: t("productPurchase"),
+          product_sale: t("productSale"),
+          product_in: t("productIn"),
+          product_out: t("productOut"),
+          cash_in: t("cashIn"),
+          cash_out: t("cashOut"),
+          expense: t("expense"),
+          income: t("income")
         }
 
         // تعیین نام ارز این تراکنش
-        const txCurrencyId = t.currencyId || baseCurrencyId
+        const txCurrencyId = tx.currencyId || baseCurrencyId
         const txCurrency = data.currencies.find(c => c.id === txCurrencyId)
         const currencyName = txCurrency ? txCurrency.name : "-"
 
         return `
         <tr>
-          <td>${t.documentNumber || "-"}</td>
-          <td>${kurdishTypes[t.type] || t.type}</td>
+          <td>${tx.documentNumber || "-"}</td>
+          <td>${kurdishTypes[tx.type] || tx.type}</td>
           <td>${currencyName}</td>
           ${displayCurrencies.map(c => {
           // آیا مبلغ این تراکنش مربوط به این ستون ارز است؟
           const isThisCurrency = c.id === txCurrencyId
           // اگر بله، مبلغ را نشان بده، وگرنه خط تیره
           if (isThisCurrency) {
-            return `<td><span class="${dollarClass}">${formatNumber(t.amount || 0)}</span></td>`
+            return `<td><span class="${dollarClass}">${formatNumber(tx.amount || 0)}</span></td>`
           } else {
             return `<td>-</td>`
           }
@@ -689,9 +755,9 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
           return `<td>${formatNumber(bal)} ${badge(bal)}</td>`
         }).join("")}
           <td>
-            <div class="ltr">${formatDateGregorian(t.date)}</div>
+            <div class="ltr">${formatDateGregorian(tx.date)}</div>
           </td>
-          <td>${t.description || "-"}</td>
+          <td>${tx.description || "-"}</td>
         </tr>`
       })
       .join("")
@@ -701,7 +767,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     <html dir="rtl" lang="ku">
     <head>
       <meta charset="UTF-8">
-      <title>لیستی بەڵگەنامەکان - ${customerName}</title>
+      <title>${t("documentList")} - ${customerName}</title>
 
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -870,26 +936,26 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
     </head>
     <body>
       <div class="header">
-        <h1>لیستی بەڵگەنامەکان</h1>
+        <h1>${t("documentList")}</h1>
         <div class="customer-name">
           ${customerName}
           ${customerPhone ? `<span style="font-size: 20px; margin-right: 10px; color: #dcfce7;">(${customerPhone})</span>` : ""}
         </div>
         <div class="meta">
-          ${dateFrom && dateTo ? `لە ${formatDate(dateFrom)} بۆ ${formatDate(dateTo)}` : ""}
+          ${dateFrom && dateTo ? `${t("from")} ${formatDate(dateFrom)} ${t("to")} ${formatDate(dateTo)}` : ""}
         </div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th>ژمارە</th>
-            <th>جۆر</th>
-            <th>جۆری دراو</th>
-            ${displayCurrencies.map(c => `<th>بڕ ${c.name}</th>`).join("")}
-            ${displayCurrencies.map(c => `<th>ئاخیر حساب ${c.name}</th>`).join("")}
-            <th>بەروار</th>
-            <th>تێبینی</th>
+            <th>${t("documentNumber")}</th>
+            <th>${t("type")}</th>
+            <th>${t("currencyType")}</th>
+            ${displayCurrencies.map(c => `<th>${t("amount")} ${c.name}</th>`).join("")}
+            ${displayCurrencies.map(c => `<th>${t("finalBalance")} ${c.name}</th>`).join("")}
+            <th>${t("date")}</th>
+            <th>${t("description")}</th>
           </tr>
         </thead>
         <tbody>
@@ -898,7 +964,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       </table>
 
       <div class="summary">
-        <h2>گزارش حساب</h2>
+        <h2>${t("accountReport")}</h2>
         <div class="summary-grid">
           ${displayCurrencies.map(c => {
       let finalBal = 0
@@ -910,10 +976,10 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
       return `
               <div class="summary-item">
-                <div class="summary-label">ئەنقەد ${c.name} لامانە</div>
+                <div class="summary-label">${t("currentBalance")} ${c.name}</div>
                 <div class="summary-value ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : ""}">${formatNumber(finalBal)}</div>
                 <div class="summary-status ${finalBal > 0 ? "positive" : finalBal < 0 ? "negative" : "zero"}">
-                  ${finalBal > 0 ? "قەرز" : finalBal < 0 ? "بە قەرز" : "سفر"}
+                  ${finalBal > 0 ? t("debtor") : finalBal < 0 ? t("creditor") : t("zero")}
                 </div>
               </div>
             `
@@ -935,11 +1001,11 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
   const handleExport = () => {
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      "شماره سند,نوع,مشتری,نوع محصول,مبلغ,تاریخ\n" +
+      `${t("documentNumber")},${t("type")},${t("customer")},${t("productType")},${t("amount")},${t("date")}\n` +
       filteredTransactions
         .map(
-          (t) =>
-            `${t.documentNumber || ""},${getTransactionTypeLabel(t.type)},${getCustomerName(t.customerId)},${getProductTypeName(t.productTypeId)},${t.amount || 0},${formatDate(t.date)}`,
+          (tx) =>
+            `${tx.documentNumber || ""},${getTransactionTypeLabel(tx.type)},${getCustomerName(tx.customerId)},${getProductTypeName(tx.productTypeId)},${tx.amount || 0},${formatDate(tx.date)}`,
         )
         .join("\n")
 
@@ -957,12 +1023,12 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       onEdit(transaction)
     } else {
       // اگر onEdit پاس نشده، پیام نمایش می‌دهیم
-      alert(`برای ویرایش سند شماره ${transaction.documentNumber || transaction.id}، به بخش ثبت اسناد بروید`)
+      alert(`${t("editTransactionAlert")} ${transaction.documentNumber || transaction.id}`)
     }
   }
 
   const handleDelete = (transaction: Transaction) => {
-    if (confirm(`آیا از حذف سند شماره ${transaction.documentNumber || transaction.id} اطمینان دارید؟`)) {
+    if (confirm(`${t("confirmDeleteTransaction")} ${transaction.documentNumber || transaction.id}?`)) {
       let transactionsToDelete = [transaction.id]
 
       // اگر سند اصلی است، تمام زیرسندهای آن را هم حذف کن
@@ -995,26 +1061,26 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       {/* فیلترها */}
       <Card className="print:hidden">
         <CardHeader>
-          <CardTitle>فیلترهای جستجو</CardTitle>
+          <CardTitle>{t("search")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">از تاریخ</label>
+              <label className="text-sm font-medium mb-2 block">{t("fromDate")}</label>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">تا تاریخ</label>
+              <label className="text-sm font-medium mb-2 block">{t("toDate")}</label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">مشتری</label>
+              <label className="text-sm font-medium mb-2 block">{t("customer")}</label>
               <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
                 <SelectTrigger>
-                  <SelectValue placeholder="همه مشتریان" />
+                  <SelectValue placeholder={t("allCustomers")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">همه مشتریان</SelectItem>
+                  <SelectItem value="all">{t("allCustomers")}</SelectItem>
                   {data.customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id}>
                       {customer.name}
@@ -1024,13 +1090,13 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">گروه مشتری</label>
+              <label className="text-sm font-medium mb-2 block">{t("customerGroup")}</label>
               <Select value={selectedGroup} onValueChange={setSelectedGroup}>
                 <SelectTrigger>
-                  <SelectValue placeholder="همه گروه‌ها" />
+                  <SelectValue placeholder={t("allGroups")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">همه گروه‌ها</SelectItem>
+                  <SelectItem value="all">{t("allGroups")}</SelectItem>
                   {data.customerGroups.map((group) => (
                     <SelectItem key={group.id} value={group.id}>
                       {group.name}
@@ -1040,13 +1106,13 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">نوع محصول</label>
+              <label className="text-sm font-medium mb-2 block">{t("productType")}</label>
               <Select value={filterProductType} onValueChange={setFilterProductType}>
                 <SelectTrigger>
-                  <SelectValue placeholder="همه محصولات" />
+                  <SelectValue placeholder={t("allProducts")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">همه محصولات</SelectItem>
+                  <SelectItem value="all">{t("allProducts")}</SelectItem>
                   {productTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.name}
@@ -1056,20 +1122,20 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">نوع سند</label>
+              <label className="text-sm font-medium mb-2 block">{t("documentType")}</label>
               <Select value={documentType} onValueChange={(value) => setDocumentType(value as "all" | "main" | "sub")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="همه اسناد" />
+                  <SelectValue placeholder={t("allDocuments")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">همه اسناد</SelectItem>
-                  <SelectItem value="main">فقط اسناد اصلی</SelectItem>
-                  <SelectItem value="sub">فقط زیرسندها</SelectItem>
+                  <SelectItem value="all">{t("allDocuments")}</SelectItem>
+                  <SelectItem value="main">{t("documentTypeMain")}</SelectItem>
+                  <SelectItem value="sub">{t("documentTypeSub")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">ارز</label>
+              <label className="text-sm font-medium mb-2 block">{t("currency")}</label>
               <div className="flex flex-col gap-2">
                 <Button
                   variant="outline"
@@ -1077,7 +1143,7 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                   onClick={() => setSelectedCurrencies([])}
                   className={selectedCurrencies.length === 0 ? "bg-blue-50" : ""}
                 >
-                  {selectedCurrencies.length === 0 ? "✓ " : ""}تمامی ارزها
+                  {selectedCurrencies.length === 0 ? "✓ " : ""}{t("allCurrencies")}
                 </Button>
                 <div className="flex flex-wrap gap-2">
                   {data.currencies?.map((currency) => (
@@ -1103,25 +1169,20 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
             </div>
           </div>
           <div className="flex gap-2 mt-4 flex-wrap">
-            <Button
-              onClick={handleToggleLast25}
-              variant={showLast25Only ? "default" : "outline"}
-              size="sm"
-              className={showLast25Only ? "bg-blue-600 hover:bg-blue-700" : ""}
-            >
-              {showLast25Only ? "✓ " : ""}نمایش 25 سند آخر
+            <Button variant={showLast25Only ? "default" : "outline"} onClick={handleToggleLast25}>
+              {showLast25Only ? t("showAll") : t("showLast25")}
             </Button>
-            <Button onClick={handlePrint} variant="outline" size="sm">
-              <Printer className="h-4 w-4 ml-2" />
-              چاپ
+            <Button variant="outline" onClick={handlePrintKurdish} className="gap-2">
+              <Printer className="w-4 h-4" />
+              {t("printKurdish")}
             </Button>
-            <Button onClick={handlePrintKurdish} variant="outline" size="sm" className="bg-green-50 hover:bg-green-100">
-              <Printer className="h-4 w-4 ml-2" />
-              پرینت - کوردی
+            <Button variant="outline" onClick={handlePrint} className="gap-2">
+              <Printer className="w-4 h-4" />
+              {t("printList")}
             </Button>
-            <Button onClick={handleExport} variant="outline" size="sm">
-              <Download className="h-4 w-4 ml-2" />
-              خروجی CSV
+            <Button variant="outline" onClick={handleExport} className="gap-2">
+              <Download className="w-4 h-4" />
+              {t("exportCSV")}
             </Button>
           </div>
         </CardContent>
@@ -1130,22 +1191,22 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
       {/* جدول اسناد */}
       <Card>
         <CardHeader className="print:pb-2">
-          <CardTitle className="text-center print:text-lg"> لیست اسناد</CardTitle>
+          <CardTitle className="text-center print:text-lg"> {t("documentList")}</CardTitle>
           <div className="text-center text-sm text-muted-foreground print:text-black print:text-xs">
             {showLast25Only && (
               <div className="text-blue-600 font-semibold mb-1">
-                📌 نمایش 25 سند آخر
-                {selectedCustomer && ` از مشتری ${getCustomerName(selectedCustomer)}`}
-                {selectedGroup && ` از گروه ${data.customerGroups.find(g => g.id === selectedGroup)?.name}`}
-                {(dateFrom || dateTo) && ` در بازه زمانی مشخص`}
+                📌 {t("showingLast25Documents")}
+                {selectedCustomer && ` ${t("fromCustomer")} ${getCustomerName(selectedCustomer)}`}
+                {selectedGroup && ` ${t("fromGroup")} ${data.customerGroups.find(g => g.id === selectedGroup)?.name}`}
+                {(dateFrom || dateTo) && ` ${t("inDateRange")}`}
               </div>
             )}
-            {!showLast25Only && dateFrom && dateTo && `از ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`}
-            {!showLast25Only && selectedCustomer && ` - مشتری: ${getCustomerName(selectedCustomer)}`}
+            {!showLast25Only && dateFrom && dateTo && `${t("from")} ${formatDate(dateFrom)} ${t("to")} ${formatDate(dateTo)}`}
+            {!showLast25Only && selectedCustomer && ` - ${t("customer")}: ${getCustomerName(selectedCustomer)}`}
           </div>
           {sortedTransactions.length > 500 && !dateFrom && !dateTo && !showLast25Only && (
             <div className="text-center text-sm text-orange-600 mt-2 print:hidden">
-              ⚠️ تعداد اسناد زیاد است ({sortedTransactions.length} سند). برای عملکرد بهتر، از فیلتر تاریخ استفاده کنید.
+              ⚠️ {t("tooManyDocumentsWarning").replace("{{count}}", String(sortedTransactions.length))}
             </div>
           )}
         </CardHeader>
@@ -1154,25 +1215,25 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
             <Table className="text-xs print:text-xs print:break-inside-avoid">
               <TableHeader>
                 <TableRow>
-                  <SortableHeader field="documentNumber">شماره</SortableHeader>
-                  <SortableHeader field="type">نوع</SortableHeader>
-                  <SortableHeader field="customer">مشتری</SortableHeader>
-                  <SortableHeader field="productType">محصول</SortableHeader>
-                  <SortableHeader field="productSale">مقدار</SortableHeader>
-                  <SortableHeader field="unitPrice">سعر</SortableHeader>
-                  <SortableHeader field="amount">مبلغ</SortableHeader>
-
+                  <SortableHeader field="documentNumber">{t("documentNumber")}</SortableHeader>
+                  <SortableHeader field="type">{t("type")}</SortableHeader>
+                  <SortableHeader field="customer">{t("customer")}</SortableHeader>
+                  <SortableHeader field="productType">{t("productType")}</SortableHeader>
+                  <SortableHeader field="productIn">{t("colIn")}</SortableHeader>
+                  <SortableHeader field="productOut">{t("colOut")}</SortableHeader>
+                  <SortableHeader field="unitPrice">{t("unitPrice")}</SortableHeader>
+                  <SortableHeader field="amount">{t("debtor")}</SortableHeader>
+                  <SortableHeader field="amount">{t("creditor")}</SortableHeader>
                   {/* ستون‌های dynamic به ازای هر ارز */}
                   {displayCurrencies.map(currency => (
                     <SortableHeader key={currency.id} field={`balance_${currency.id}`}>
-                      ت.حساب {currency.name}
+                      {t("finalBalance")} {currency.name}
                     </SortableHeader>
                   ))}
-
-                  <SortableHeader field="productBalance">ت.حساب محصول</SortableHeader>
-                  <SortableHeader field="date">تاریخ</SortableHeader>
-                  <SortableHeader field="description">توضیح</SortableHeader>
-                  <TableHead className="text-center print:hidden w-[80px] p-1 h-auto">عملیات</TableHead>
+                  <SortableHeader field="productBalance">{t("finalProductBalance")}</SortableHeader>
+                  <SortableHeader field="date">{t("date")}</SortableHeader>
+                  <SortableHeader field="description">{t("description")}</SortableHeader>
+                  <TableHead className="text-center print:hidden w-[80px] p-1 h-auto">{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1198,7 +1259,28 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                       <TableCell className="text-center text-xs p-1 max-w-[60px] truncate">
                         {getProductTypeName(transaction.productTypeId)}
                       </TableCell>
-                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">{transaction.weight ? `${formatNumber(transaction.weight || 0)}` : "-"}</TableCell>
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">
+                        <span className="text-red-600 font-medium">
+                          {["product_purchase", "product_in"].includes(transaction.type)
+                            ? (transaction.weight
+                              ? `${formatNumber(transaction.weight)} ${t(transaction.weightUnit || "ton")}`
+                              : transaction.quantity
+                                ? `${formatNumber(transaction.quantity)} ${t("count")}`
+                                : "-")
+                            : "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">
+                        <span className="text-green-600 font-medium">
+                          {["product_sale", "product_out"].includes(transaction.type)
+                            ? (transaction.weight
+                              ? `${formatNumber(transaction.weight)} ${t(transaction.weightUnit || "ton")}`
+                              : transaction.quantity
+                                ? `${formatNumber(transaction.quantity)} ${t("count")}`
+                                : "-")
+                            : "-"}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-center text-xs p-1 whitespace-nowrap">
                         {(() => {
                           const unit = getUnitPrice(transaction)
@@ -1206,31 +1288,22 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                         })()}
                       </TableCell>
 
+                      {/* Debtor (Green) */}
                       <TableCell className="text-center text-xs p-1 whitespace-nowrap">
-                        {transaction.type === "cash_in" ? (
-                          <span className="text-red-600">
+                        {["product_sale", "cash_out"].includes(transaction.type) ? (
+                          <span className="text-green-600 font-medium">
                             {formatNumber(transaction.amount || 0)}
                           </span>
-                        ) : transaction.type === "cash_out" ? (
-                          <span className="text-green-600">
-                            {formatNumber(transaction.amount || 0)}
-                          </span>
-                        ) : transaction.type === "product_purchase" ? (
-                          <span className="text-red-600">
-                            {formatNumber(transaction.amount || 0)}
-                          </span>
-                        ) : transaction.type === "product_sale" ? (
-                          <span className="text-green-600">
-                            {formatNumber(transaction.amount || 0)}
-                          </span>
+                        ) : "-"}
+                      </TableCell>
 
-                        ) : transaction.type === "expense" ? (
-                          <span className="text-red-600">
+                      {/* Creditor (Red) */}
+                      <TableCell className="text-center text-xs p-1 whitespace-nowrap">
+                        {["product_purchase", "cash_in", "expense", "income"].includes(transaction.type) ? (
+                          <span className="text-red-600 font-medium">
                             {formatNumber(transaction.amount || 0)}
                           </span>
-                        ) : (
-                          "-"
-                        )}
+                        ) : "-"}
                       </TableCell>
 
 
@@ -1254,11 +1327,18 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
                           if (!runningBalance) return "-"
                           const mainProductType = transaction.productTypeId
                           if (!mainProductType) return "-"
-                          const productVal = runningBalance.productBalances?.[mainProductType] || 0
+                          const productVal = runningBalance.productBalances?.[mainProductType] || { weight: 0, quantity: 0 }
                           return (
                             <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                              <span className="text-[10px]">{formatNumber(productVal)}</span>
-                              {debtBadge(productVal)}
+                              {productVal.weight ? (
+                                <span>{formatNumber(productVal.weight)} {t(transaction.weightUnit || "ton")}</span>
+                              ) : null}
+                              {productVal.weight && productVal.quantity ? " / " : ""}
+                              {productVal.quantity ? (
+                                <span>{formatNumber(productVal.quantity)} {t("count")}</span>
+                              ) : null}
+                              {!productVal.weight && !productVal.quantity ? <span>0</span> : null}
+                              {debtBadge(productVal.weight || productVal.quantity || 0)}
                             </div>
                           )
                         })()}
@@ -1300,38 +1380,38 @@ export function DocumentsList({ data, onDataChange, onEdit }: DocumentsListProps
 
           {/* جمع کل */}
           <div className="mt-6 p-4 bg-muted rounded-lg print:bg-gray-100 print:mt-4 print:p-2 print:break-inside-avoid">
-            <h3 className="font-semibold mb-3 text-center print:text-sm print:mb-2">خلاصه کل</h3>
+            <h3 className="font-semibold mb-3 text-center print:text-sm print:mb-2">{t("summaryTotal")}</h3>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm print:grid-cols-5 print:gap-2 print:text-xs">
               <div className="text-center">
-                <div className="font-medium print:text-xs">کل ورود محصول</div>
+                <div className="font-medium print:text-xs">{t("totalProductIn")}</div>
                 <div className="text-lg font-bold text-blue-600 print:text-sm">
-                  {formatNumber(totals.totalProductIn)} تن
+                  {formatNumber(totals.totalProductIn)} {t("ton")}
                 </div>
               </div>
               <div className="text-center">
-                <div className="font-medium print:text-xs">کل خروج محصول</div>
+                <div className="font-medium print:text-xs">{t("totalProductOut")}</div>
                 <div className="text-lg font-bold text-orange-600 print:text-sm">
-                  {formatNumber(totals.totalProductOut)} تن
+                  {formatNumber(totals.totalProductOut)} {t("ton")}
                 </div>
               </div>
               <div className="text-center">
-                <div className="font-medium print:text-xs">کل خرید محصول</div>
+                <div className="font-medium print:text-xs">{t("totalProductPurchase")}</div>
                 <div className="text-lg font-bold text-green-600 print:text-sm">
-                  {formatNumber(totals.totalProductPurchase)} تن
+                  {formatNumber(totals.totalProductPurchase)} {t("ton")}
                 </div>
               </div>
               <div className="text-center">
-                <div className="font-medium print:text-xs">کل فروش محصول</div>
+                <div className="font-medium print:text-xs">{t("totalProductSale")}</div>
                 <div className="text-lg font-bold text-purple-600 print:text-sm">
-                  {formatNumber(totals.totalProductSale)} تن
+                  {formatNumber(totals.totalProductSale)} {t("ton")}
                 </div>
               </div>
               <div className="text-center">
-                <div className="font-medium print:text-xs">کل مبلغ دلار</div>
+                <div className="font-medium print:text-xs">{t("totalAmountDollar")}</div>
                 <div
                   className={`text-lg font-bold print:text-sm ${totals.totalAmount >= 0 ? "text-gray-800" : "text-red-600"}`}
                 >
-                  {formatNumber(totals.totalAmount)} دلار
+                  {formatNumber(totals.totalAmount)} {t("dollar")}
                 </div>
               </div>
 

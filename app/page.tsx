@@ -167,7 +167,13 @@ export default function HomePage() {
   }, [data, isLoading, saveData])
 
   const [activeSection, setActiveSection] = useState("dashboard")
+  const [initialDocsFilter, setInitialDocsFilter] = useState<{ customerId?: string } | null>(null)
   const { t, lang } = useLang()
+
+  const navigateToCustomerHistory = (customerId: string) => {
+    setInitialDocsFilter({ customerId })
+    setActiveSection("documents-list")
+  }
 
   if (isLoading) {
     return (
@@ -356,7 +362,11 @@ export default function HomePage() {
                 <TabsTrigger value="customer-groups">{t("customerGroups")}</TabsTrigger>
               </TabsList>
               <TabsContent value="customer-list">
-                <CustomerList data={data} onDataChange={saveData} />
+                <CustomerList
+                  data={data}
+                  onDataChange={saveData}
+                  onViewHistory={navigateToCustomerHistory}
+                />
               </TabsContent>
               <TabsContent value="customer-groups">
                 <CustomerGroups data={data} onDataChange={saveData} />
@@ -373,7 +383,14 @@ export default function HomePage() {
       case "cash-inventory":
         return <CashInventory data={data} productTypes={productTypes} />
       case "documents-list":
-        return <DocumentsList data={data} onDataChange={saveData} />
+        return (
+          <DocumentsList
+            data={data}
+            onDataChange={saveData}
+            initialFilter={initialDocsFilter}
+            onFilterClear={() => setInitialDocsFilter(null)}
+          />
+        )
       case "foreign-transactions":
         return <ForeignTransactions data={data} onDataChange={saveData} />
       case "reports":
