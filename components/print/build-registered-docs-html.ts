@@ -42,7 +42,7 @@ export const buildRegisteredDocsHTML = (
 ) => {
   const isRtl = lang === "fa"
   const title = lang === "fa" ? "لیست اسناد ثبت شده" : "Registered Documents List"
-  const dateStr = new Date().toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US")
+  const dateStr = new Date().toLocaleDateString(lang === "fa" ? "fa-IR" : "en-GB")
 
   // Helper to safely get nested properties or format
   const safeFormat = (val: number | undefined) => (val ? formatNumber(val) : "-")
@@ -79,9 +79,9 @@ export const buildRegisteredDocsHTML = (
     if (columns.number) row += `<td>${t.documentNumber || "-"}</td>`
 
     if (columns.type) {
-      let typeLabel = t.type
+      let typeLabel: string = t.type
       if (lang === "fa") {
-        const typeMap: any = {
+        const typeMap: Record<string, string> = {
           product_in: "ورود کالا", product_out: "خروج کالا",
           product_purchase: "خرید", product_sale: "فروش",
           goods_opening: "اول دوره کالا",
@@ -90,7 +90,7 @@ export const buildRegisteredDocsHTML = (
           receivable: "طلب", payable: "بدهی",
           goods_receipt: "رسید کالا", goods_issue: "حواله کالا"
         }
-        typeLabel = typeMap[t.type as any] || t.type
+        typeLabel = typeMap[t.type as string] || t.type
       } else {
         typeLabel = t.type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
       }
@@ -158,7 +158,7 @@ export const buildRegisteredDocsHTML = (
 
     if (columns.date) {
       const d = new Date(t.date || "")
-      const locale = lang === "fa" ? "fa-IR" : "en-US"
+      const locale = lang === "fa" ? "fa-IR" : "en-GB"
       row += `<td>${d.toLocaleDateString(locale)} ${d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</td>`
     }
     if (columns.description) row += `<td>${t.description || "-"}</td>`

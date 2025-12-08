@@ -215,21 +215,14 @@ export function DocumentsList({ data, onDataChange, onEdit, initialFilter, onFil
 
   const formatDate = (dateString: string) => {
     try {
-      return formatPersianDate(dateString)
-    } catch (error) {
-      return dateString
-    }
-  }
-
-  const formatDateGregorian = (dateString: string) => {
-    try {
+      if (lang === "fa") return formatPersianDate(dateString)
       return formatGregorianDate(dateString)
     } catch (error) {
       return dateString
     }
   }
 
-  // محاسبه running balance برای **همه** اسناد (بدون فیلتر) تا ته حساب درست باشه
+  // running balance ...
   const runningBalancesMap = useMemo(() => {
     const balanceMap = new Map<string, {
       cashBalances: { [currencyId: string]: number }
@@ -585,8 +578,12 @@ export function DocumentsList({ data, onDataChange, onEdit, initialFilter, onFil
             ${badge(productVal.weight || productVal.quantity || 0)}
           </td>
           <td>
-            <div>${formatDate(tx.date)}</div>
-            <div class="subtle small">${formatDateGregorian(tx.date)}</div>
+            ${lang === "fa" ? `
+              <div>${formatPersianDate(tx.date)}</div>
+              <div class="subtle small">${formatGregorianDate(tx.date)}</div>
+            ` : `
+              <div>${formatGregorianDate(tx.date)}</div>
+            `}
           </td>
           <td>${tx.description || "-"}</td>
         </tr>
@@ -755,7 +752,7 @@ export function DocumentsList({ data, onDataChange, onEdit, initialFilter, onFil
           return `<td>${formatNumber(bal)} ${badge(bal)}</td>`
         }).join("")}
           <td>
-            <div class="ltr">${formatDateGregorian(tx.date)}</div>
+            <div class="ltr">${formatGregorianDate(tx.date)}</div>
           </td>
           <td>${tx.description || "-"}</td>
         </tr>`
@@ -1345,10 +1342,18 @@ export function DocumentsList({ data, onDataChange, onEdit, initialFilter, onFil
                       </TableCell>
 
                       <TableCell className="text-center text-[10px] p-1 whitespace-nowrap">
-                        <div>{formatDate(transaction.date)}</div>
-                        <div className="text-muted-foreground">
-                          {formatDateGregorian(transaction.date)}
-                        </div>
+                        {lang === "fa" ? (
+                          <>
+                            <div>{formatDate(transaction.date)}</div>
+                            <div className="text-muted-foreground">
+                              {formatGregorianDate(transaction.date)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="font-medium">
+                            {formatDate(transaction.date)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-center text-xs p-1 max-w-[100px] truncate text-muted-foreground" title={transaction.description || "-"}>{transaction.description || "-"}</TableCell>
                       <TableCell className="text-center print:hidden p-0.5">

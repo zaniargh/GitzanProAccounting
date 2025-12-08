@@ -187,7 +187,7 @@ export function ForeignTransactions({ data, onDataChange }: ForeignTransactionsP
     const printContent = (customerName: string, phoneNumber: string, items: ForeignTransactionItem[]) => {
         const currentDate = new Date()
         const persianDate = currentDate.toLocaleDateString("fa-IR")
-        const gregorianDate = currentDate.toLocaleDateString("en-US")
+        const gregorianDate = currentDate.toLocaleDateString("en-GB")
         const totalSum = items.reduce((sum, item) => sum + item.amount, 0)
         const totalSumDinar = items.reduce((sum, item) => sum + (item.amountDinar || 0), 0)
 

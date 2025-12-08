@@ -101,7 +101,7 @@ export function buildTemporaryDocsHTML({ transactions, currencies, productTypes,
         <td>${mRec}</td>
         <td>${mPay}</td>
         
-        <td>${new Date(tx.date || tx.createdAt || "").toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US")}</td>
+        <td>${new Date(tx.date || tx.createdAt || "").toLocaleDateString(lang === "fa" ? "fa-IR" : "en-GB")}</td>
         <td class="desc">${tx.description || "-"}</td>
       </tr>
     `

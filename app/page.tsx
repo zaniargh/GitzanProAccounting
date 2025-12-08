@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from "react"
+import { formatGregorianDate } from "@/lib/date-utils"
 import Settings from "@/components/settings/settings"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useLocalStorageGeneric } from "@/hooks/use-local-storage-generic"
@@ -334,7 +335,7 @@ export default function HomePage() {
                     <div key={t.id} className="flex justify-between items-center py-2 border-b last:border-0">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{customer?.name || 'Unknown'}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(t.date).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground">{formatGregorianDate(t.date as string)}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-semibold">

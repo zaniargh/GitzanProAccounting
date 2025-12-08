@@ -269,7 +269,7 @@ export function CustomerList({ data, onDataChange, onViewHistory }: CustomerList
 
     const currentDate = new Date()
     const persianDate = currentDate.toLocaleDateString("fa-IR")
-    const gregorianDate = currentDate.toLocaleDateString("en-US")
+    const gregorianDate = currentDate.toLocaleDateString("en-GB")
 
     const printContent = `
       <!DOCTYPE html>
